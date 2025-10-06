@@ -9,7 +9,7 @@ env:
   AZURE_RESOURCE_GROUP: ai-mcp-rg
   LOCATION: westeurope
   APP_SERVICE_PLAN: mcp-asp
-  WEBAPP_NAME: mcp-server-app
+  WEBAPP_NAME: mcp-server-app-$(date +%s)
   APIM_NAME: mcp-apim
   APIM_PUBLISHER_EMAIL: you@example.com
   APIM_PUBLISHER_NAME: "Your Name"
