@@ -10,9 +10,9 @@ env:
   LOCATION: westeurope
   APP_SERVICE_PLAN: mcp-asp
   WEBAPP_NAME: mcp-server-app-davisanc
-  APIM_NAME: mcp-apim
-  APIM_PUBLISHER_EMAIL: you@example.com
-  APIM_PUBLISHER_NAME: "Your Name"
+  APIM_NAME: mcp-apim-davisanc
+  APIM_PUBLISHER_EMAIL: test@example.com
+  APIM_PUBLISHER_NAME: "David Sanchez"
 
 jobs:
   deploy:
