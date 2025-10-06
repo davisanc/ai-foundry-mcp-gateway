@@ -1,0 +1,39 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "MCP API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/session": {
+      "post": {
+        "summary": "Create session",
+        "responses": {
+          "200": { "description": "Session created" }
+        }
+      }
+    },
+    "/session/{sid}/upload": {
+      "post": {
+        "summary": "Upload document",
+        "parameters": [
+          { "name": "sid", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Document uploaded" }
+        }
+      }
+    },
+    "/session/{sid}/query": {
+      "post": {
+        "summary": "Query document",
+        "parameters": [
+          { "name": "sid", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Query result" }
+        }
+      }
+    }
+  }
+}
