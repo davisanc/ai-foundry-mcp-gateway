@@ -82,12 +82,7 @@ jobs:
     # -------------------------------
     # Create APIM and import MCP API
     # -------------------------------
-    
-    - name: Ensure APIM extension is installed
-      run: |
-        az extension add --name apim --yes || az extension update --name apim
-
-
+  
     - name: Create APIM
       run: |
         az apim create \
@@ -96,7 +91,6 @@ jobs:
           --location $LOCATION \
           --publisher-email $APIM_PUBLISHER_EMAIL \
           --publisher-name $APIM_PUBLISHER_NAME \
-          --sku-name Consumption
 
     - name: Import MCP API into APIM
       run: |
