@@ -1,4 +1,4 @@
-name: Deploy Azure AI Foundry + MCP + APIM
+name: Deploy MCP + GPT-4o-mini + APIM
 
 on:
   push:
@@ -13,7 +13,8 @@ env:
   APIM_NAME: mcp-apim
   APIM_PUBLISHER_EMAIL: you@example.com
   APIM_PUBLISHER_NAME: "Your Name"
-  KV_NAME: mcp-kv
+  MODEL_NAME: gpt4o-mini-endpoint
+  MODEL_DEPLOYMENT: gpt4o-mini-deployment
 
 jobs:
   deploy:
@@ -30,10 +31,57 @@ jobs:
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
 
+    # -------------------------------
+    # Create Resource Group
+    # -------------------------------
     - name: Create Resource Group
       run: |
         az group create -n $AZURE_RESOURCE_GROUP -l $LOCATION
 
+    # -------------------------------
+    # Deploy GPT-4o-mini catalog model
+    # -------------------------------
+    - name: Create GPT-4o-mini Endpoint
+      run: |
+        az ml online-endpoint create \
+          -n $MODEL_NAME \
+          -g $AZURE_RESOURCE_GROUP \
+          -w ${{ secrets.FOUNDARY_WORKSPACE }} \
+          --auth-mode key
+
+    - name: Deploy GPT-4o-mini Deployment
+      run: |
+        az ml online-deployment create \
+          -n $MODEL_DEPLOYMENT \
+          -e $MODEL_NAME \
+          -g $AZURE_RESOURCE_GROUP \
+          -w ${{ secrets.FOUNDARY_WORKSPACE }} \
+          --model azureml:gpt-4o-mini:latest \
+          --instance-type Standard_F2s_v2 \
+          --instance-count 1 \
+          --all-traffic
+
+    - name: Get Model Endpoint Key
+      run: |
+        key=$(az ml online-endpoint get-credentials \
+          -n $MODEL_NAME \
+          -g $AZURE_RESOURCE_GROUP \
+          -w ${{ secrets.FOUNDARY_WORKSPACE }} \
+          --query primaryKey -o tsv)
+        echo "MODEL_KEY=$key" >> $GITHUB_ENV
+
+    - name: Get Model Endpoint URL
+      run: |
+        url=$(az ml online-endpoint show \
+          -n $MODEL_NAME \
+          -g $AZURE_RESOURCE_GROUP \
+          -w ${{ secrets.FOUNDARY_WORKSPACE }} \
+          --query scoring_uri -o tsv)
+        echo "MODEL_URL=$url" >> $GITHUB_ENV
+
+    # -------------------------------
+    # Create App Service Plan
+    # -------------------------------
     - name: Create App Service Plan
       run: |
         az appservice plan create \
@@ -41,7 +89,10 @@ jobs:
           -n $APP_SERVICE_PLAN \
           --sku B1 --is-linux
 
-    - name: Create Web App
+    # -------------------------------
+    # Deploy MCP server
+    # -------------------------------
+    - name: Create Web App for MCP server
       run: |
         az webapp create \
           -g $AZURE_RESOURCE_GROUP \
@@ -49,12 +100,22 @@ jobs:
           -n $WEBAPP_NAME \
           --runtime "NODE:18-lts"
 
+    - name: Set MCP server App Settings
+      run: |
+        az webapp config appsettings set \
+          -g $AZURE_RESOURCE_GROUP \
+          -n $WEBAPP_NAME \
+          --settings FOUNDRY_ENDPOINT=$MODEL_URL FOUNDRY_API_KEY=$MODEL_KEY
+
     - name: Deploy MCP Server
       uses: azure/webapps-deploy@v2
       with:
         app-name: ${{ env.WEBAPP_NAME }}
         package: ./mcp-server
 
+    # -------------------------------
+    # Create APIM and import MCP API
+    # -------------------------------
     - name: Create APIM
       run: |
         az apim create \
