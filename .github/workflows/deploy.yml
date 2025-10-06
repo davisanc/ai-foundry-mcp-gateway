@@ -90,7 +90,7 @@ jobs:
           --name $APIM_NAME \
           --location $LOCATION \
           --publisher-email $APIM_PUBLISHER_EMAIL \
-          --publisher-name $APIM_PUBLISHER_NAME \
+          --publisher-name "$APIM_PUBLISHER_NAME" \
 
     - name: Import MCP API into APIM
       run: |
