@@ -62,7 +62,7 @@ jobs:
           -g $AZURE_RESOURCE_GROUP \
           -p $APP_SERVICE_PLAN \
           -n $WEBAPP_NAME \
-          --runtime "NODE:20-lts"
+          --runtime "NODE:22-lts"
 
     - name: Set MCP server App Settings
       run: |
