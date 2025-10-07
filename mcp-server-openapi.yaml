@@ -1,0 +1,83 @@
+openapi: 3.0.3
+info:
+  title: MCP Server API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+paths:
+  /session:
+    post:
+      summary: Create a new session
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+  /session/{sid}/upload:
+    post:
+      summary: Upload a document to a session
+      parameters:
+        - in: path
+          name: sid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                title:
+                  type: string
+      responses:
+        '200':
+          description: Document uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  docId:
+                    type: string
+  /session/{sid}/query:
+    post:
+      summary: Query a document in a session
+      parameters:
+        - in: path
+          name: sid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                docId:
+                  type: string
+                query:
+                  type: string
+                mode:
+                  type: string
+                  enum: [qa, summary]
+      responses:
+        '200':
+          description: Query response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answer:
+                    type: string
