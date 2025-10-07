@@ -99,6 +99,6 @@ jobs:
           -n $APIM_NAME \
           --path mcp \
           --api-id mcp-api \
-          --specification-format OpenApiYaml \
+          --specification-format OpenApi \
           --specification-path ./mcp-server-openapi.yaml \
           --service-url "https://${WEBAPP_NAME}.azurewebsites.net"
