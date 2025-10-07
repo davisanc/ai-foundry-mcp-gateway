@@ -42,6 +42,14 @@ jobs:
     - name: Create Resource Group
       run: |
         az group create -n $AZURE_RESOURCE_GROUP -l $LOCATION
+    #-------------------------------
+    # Installing dependencies
+    #-------------------------------
+    - name: Install npm dependencies
+      run: |
+        cd mcp-server
+        npm install
+    
 
     # -------------------------------
     # Create App Service Plan
