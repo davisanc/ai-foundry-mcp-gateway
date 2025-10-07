@@ -11,6 +11,15 @@ app.use(express.json());
 
 const sessions = {}; // In-memory store (for demo)
 
+// Health / landing page
+app.get('/', (_, res) => {
+  res.type('text/plain').send('MCP server OK');
+});
+
+// (Optional) a dedicated health endpoint for probes/APIM
+app.get('/healthz', (_, res) => res.json({ status: 'ok' }));
+
+
 app.post('/session', (req, res) => {
   const sid = uuidv4();
   sessions[sid] = { docs: [], history: [] };
