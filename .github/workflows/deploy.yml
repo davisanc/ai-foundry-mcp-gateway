@@ -110,3 +110,6 @@ jobs:
           --specification-format OpenApi \
           --specification-path ./mcp-server-openapi.yaml \
           --service-url "https://${WEBAPP_NAME}.azurewebsites.net"
+
+
+            
