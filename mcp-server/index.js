@@ -7,6 +7,10 @@ const fetch = require('node-fetch');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
+
+// Serve static files from /public (index.html is our landing page)
+app.use(express.static('public'));
+
 app.use(express.json());
 
 const sessions = {}; // In-memory store (for demo)

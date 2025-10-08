@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>EMEA AI Security MCP Server</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg: #0b1a2b; --card: #10243d; --ink: #e6f0ff; --muted: #a8c1e5; --accent:#5cc8ff; --ok:#32d296; --err:#ff6b6b; }
+    html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+    .wrap { max-width: 900px; margin: 48px auto; padding: 0 16px; }
+    header { margin-bottom: 24px; }
+    h1 { margin:0 0 8px; font-weight: 700; letter-spacing:.2px; }
+    p.lead { margin:0; color: var(--muted); }
+    .card { background: var(--card); border:1px solid #1e3a5c; border-radius: 10px; padding: 16px; margin: 16px 0; }
+    .row { display:flex; gap:16px; flex-wrap: wrap; }
+    .row .card { flex: 1 1 380px; }
+    label { display:block; margin:8px 0 4px; color: var(--muted); font-size: 14px; }
+    input[type="text"], textarea, select {
+      width:100%; box-sizing:border-box; padding:10px 12px; border-radius:8px;
+      border:1px solid #2a4b74; background:#0d2138; color:var(--ink); outline:none;
+    }
+    textarea { min-height: 140px; resize: vertical; }
+    button {
+      background: var(--accent); color:#012; border:0; border-radius: 8px; padding:10px 14px;
+      font-weight:600; cursor:pointer; transition: .15s;
+    }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .badge { display:inline-block; font-size:12px; padding:4px 8px; border-radius:999px; background:#0d2138; border:1px solid #2a4b74; color:var(--muted);}
+    .ok { color: var(--ok); }
+    .err { color: var(--err); white-space: pre-wrap; }
+    pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono","Courier New", monospace; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono","Courier New", monospace; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Welcome to the EMEA AI Security MCP Server</h1>
+      <p class="lead">Use this page to create a session, upload a document, and query it via your Azure AI Foundry model.</p>
+      <div style="margin-top:10px">
+        <span class="badge">App: <span id="appUrl" class="mono"></span></span>
+        <span class="badge">Session: <span id="sessionId" class="mono">—</span></span>
+        <span class="badge">Doc: <span id="docId" class="mono">—</span></span>
+      </div>
+    </header>
+
+    <section class="row">
+      <!-- Create / Reset session -->
+      <div class="card">
+        <h3 style="margin-top:0">1) Session</h3>
+        <p>Creates a new in-memory session on the server.</p>
+        <button id="newSessionBtn">Create New Session</button>
+        <div id="sessionMsg"></div>
+      </div>
+
+      <!-- Upload document -->
+      <div class="card">
+        <h3 style="margin-top:0">2) Upload a document</h3>
+        <label for="title">Title (optional)</label>
+        <input type="text" id="title" placeholder="e.g., Security Memo" />
+        <label for="text">Document text</label>
+        <textarea id="text" placeholder="Paste the document text here..."></textarea>
+        <div style="display:flex; gap:10px; align-items:center; margin-top:10px">
+          <button id="uploadBtn" disabled>Upload</button>
+          <span id="uploadMsg"></span>
+        </div>
+      </div>
+
+      <!-- Query -->
+      <div class="card">
+        <h3 style="margin-top:0">3) Ask or summarize</h3>
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="qa">Q&A over the document</option>
+          <option value="">Summarize the document</option>
+        </select>
+        <label for="query">Question / Instruction</label>
+        <input type="text" id="query" placeholder="e.g., What are the required ports?" />
+        <div style="display:flex; gap:10px; align-items:center; margin-top:10px">
+          <button id="queryBtn" disabled>Run</button>
+          <span id="queryMsg"></span>
+        </div>
+        <div id="answerCard" class="card" style="display:none; margin-top:16px">
+          <strong>Answer</strong>
+          <div id="answer" style="white-space: pre-wrap; margin-top:8px"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3 style="margin-top:0">Console</h3>
+      <pre id="console" style="max-height:260px; overflow:auto; background:#0d2138; padding:12px; border-radius:8px; border:1px solid #2a4b74;"></pre>
+    </section>
+  </div>
+
+  <script>
+    const log = (msg, type='info') => {
+      const el = document.getElementById('console');
+      const time = new Date().toLocaleTimeString();
+      const line = `[${time}] ${msg}\n`;
+      el.textContent += line;
+      el.scrollTop = el.scrollHeight;
+    };
+
+    const appUrl = `${location.protocol}//${location.host}`;
+    document.getElementById('appUrl').textContent = appUrl;
+
+    let sessionId = null;
+    let docId = null;
+
+    const setSession = (sid) => {
+      sessionId = sid;
+      document.getElementById('sessionId').textContent = sid || '—';
+      document.getElementById('uploadBtn').disabled = !sid;
+      document.getElementById('queryBtn').disabled  = !(sid && docId);
+    };
+
+    const setDoc = (did) => {
+      docId = did;
+      document.getElementById('docId').textContent = did || '—';
+      document.getElementById('queryBtn').disabled = !(sessionId && did);
+    };
+
+    async function createSession() {
+      try {
+        log('Creating session...');
+        const r = await fetch('/session', { method: 'POST' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        setSession(j.sessionId);
+        setDoc(null);
+        document.getElementById('sessionMsg').innerHTML = '<span class="ok">✅ Session created</span>';
+        log(`Session created: ${j.sessionId}`);
+      } catch (e) {
+        document.getElementById('sessionMsg').innerHTML = `<span class="err">❌ ${e.message}</span>`;
+        log(`Error creating session: ${e}`, 'error');
+      }
+    }
+
+    async function uploadDoc() {
+      try {
+        const title = document.getElementById('title').value || 'Untitled';
+        const text  = document.getElementById('text').value.trim();
+        if (!text) { alert('Please paste some document text.'); return; }
+        log(`Uploading document (${text.length} chars) to session ${sessionId}...`);
+        const r = await fetch(`/session/${encodeURIComponent(sessionId)}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, text })
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        setDoc(j.docId);
+        document.getElementById('uploadMsg').innerHTML = '<span class="ok">✅ Uploaded</span>';
+        log(`Document uploaded: ${j.docId}`);
+      } catch (e) {
+        document.getElementById('uploadMsg').innerHTML = `<span class="err">❌ ${e.message}</span>`;
+        log(`Error uploading document: ${e}`, 'error');
+      }
+    }
+
+    async function runQuery() {
+      try {
+        const mode  = document.getElementById('mode').value;
+        const query = document.getElementById('query').value.trim();
+        log(`Invoking query (mode=${mode || 'summary'})...`);
+        document.getElementById('queryMsg').textContent = 'Running...';
+        const r = await fetch(`/session/${encodeURIComponent(sessionId)}/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ docId, query, mode })
+        });
+        const text = await r.text();
+        let j;
+        try { j = JSON.parse(text); } catch { j = { error: 'Invalid JSON from server', raw: text }; }
+
+        if (!r.ok) {
+          const msg = j.error || `HTTP ${r.status}`;
+          document.getElementById('queryMsg').innerHTML = `<span class="err">❌ ${msg}</span>`;
+          document.getElementById('answerCard').style.display = 'block';
+          document.getElementById('answer').textContent = (typeof j === 'string') ? j : JSON.stringify(j, null, 2);
+          log(`Query failed: ${msg}`, 'error');
+          return;
+        }
+
+        document.getElementById('queryMsg').innerHTML = '<span class="ok">✅ Done</span>';
+        document.getElementById('answerCard').style.display = 'block';
+        document.getElementById('answer').textContent = j.answer || '(empty response)';
+        log('Query completed.');
+      } catch (e) {
+        document.getElementById('queryMsg').innerHTML = `<span class="err">❌ ${e.message}</span>`;
+        log(`Error running query: ${e}`, 'error');
+      }
+    }
+
+    // Wire up UI
+    document.getElementById('newSessionBtn').addEventListener('click', createSession);
+    document.getElementById('uploadBtn').addEventListener('click', uploadDoc);
+    document.getElementById('queryBtn').addEventListener('click', runQuery);
+
+    // Auto-create a session on page load
+    window.addEventListener('DOMContentLoaded', createSession);
+  </script>
+</body>
+</html>
