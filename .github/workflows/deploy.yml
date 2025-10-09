@@ -108,7 +108,7 @@ jobs:
         az apim api import \
           -g $AZURE_RESOURCE_GROUP \
           -n $APIM_NAME \
-          --path mcp \
+          --path "" \
           --api-id mcp-api \
           --specification-format OpenApi \
           --specification-path ./mcp-server-openapi.yaml \
