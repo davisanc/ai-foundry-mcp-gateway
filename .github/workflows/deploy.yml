@@ -100,30 +100,7 @@ jobs:
           --publisher-email $APIM_PUBLISHER_EMAIL \
           --publisher-name "$APIM_PUBLISHER_NAME" \
 
-    #-------------------
-    # Catch GET command
-    #-------------------
-
     
-    - name: APIM - ensure root GET operation
-      env:
-        RG: ${{ env.AZURE_RESOURCE_GROUP }}
-        APIM: ${{ env.APIM_NAME }}
-        API_ID: mcp-api
-      run: |
-        set -euo pipefail
-        OP_ID="root-get"
-        if az apim api operation show -g "$RG" -n "$APIM" --api-id "$API_ID" --operation-id "$OP_ID" >/dev/null 2>&1; then
-          echo "Operation '$OP_ID' already exists."
-        else
-          az apim api operation create \
-            -g "$RG" -n "$APIM" \
-              --api-id "$API_ID" \
-              --operation-id "$OP_ID" \
-              --method GET \
-              --url-template "/" \
-              --display-name "Root GET"
-        fi
 
 
     - name: Import MCP API into APIM
@@ -131,11 +108,9 @@ jobs:
         az apim api import \
           -g $AZURE_RESOURCE_GROUP \
           -n $APIM_NAME \
-          --path mcp \
+          --path "" \
           --api-id mcp-api \
           --specification-format OpenApi \
           --specification-path ./mcp-server-openapi.yaml \
           --service-url "https://${WEBAPP_NAME}.azurewebsites.net"
 
-
-            
