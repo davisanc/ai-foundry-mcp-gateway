@@ -1,16 +1,12 @@
 // added debugging options
 
+//test
+
 // require('dotenv').config();
 
 const express = require('express');
 const fetch = require('node-fetch');
 const { v4: uuidv4 } = require('uuid');
-const multer = require('multer');
-const upload = multer();
-const mammoth = require('mammoth');
-const pptxParser = require('pptx-parser');
-const csvParse = require('csv-parse/lib/sync');
-const XLSX = require('xlsx');
 // ...existing code...
 
 const app = express();
@@ -39,41 +35,11 @@ app.post('/session', (req, res) => {
   res.json({ sessionId: sid });
 });
 
-app.post('/session/:sid/upload', upload.single('file'), async (req, res) => {
+app.post('/session/:sid/upload', (req, res) => {
   const { sid } = req.params;
   if (!sessions[sid]) return res.status(404).send('Session not found');
 
-  let text = '';
-  let title = req.body.title || 'Untitled';
-
-  if (req.file) {
-    const ext = (req.file.originalname || '').split('.').pop().toLowerCase();
-    try {
-      if (ext === 'txt' || ext === 'md' || ext === 'json') {
-        text = req.file.buffer.toString('utf8');
-      } else if (ext === 'docx') {
-        const result = await mammoth.extractRawText({ buffer: req.file.buffer });
-        text = result.value;
-      } else if (ext === 'pptx') {
-        const slides = await pptxParser.parse(req.file.buffer);
-        text = slides.map(s => s.text || s).join('\n---\n');
-      } else if (ext === 'csv') {
-        text = csvParse(req.file.buffer.toString('utf8')).map(r => r.join(', ')).join('\n');
-      } else if (ext === 'xlsx' || ext === 'xls') {
-        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-        text = workbook.SheetNames.map(name => XLSX.utils.sheet_to_csv(workbook.Sheets[name])).join('\n');
-      } else {
-        return res.status(400).json({ error: 'Unsupported file type.' });
-      }
-    } catch (err) {
-      return res.status(500).json({ error: 'Failed to parse file: ' + err.message });
-    }
-  } else {
-    text = req.body.text || '';
-  }
-
-  if (!text) return res.status(400).json({ error: 'No document text provided.' });
-
+  const { text, title } = req.body;
   const docId = uuidv4();
   sessions[sid].docs.push({ id: docId, title, text });
   console.log(`📄 Uploaded document ${docId} to session ${sid}`);

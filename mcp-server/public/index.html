@@ -59,15 +59,7 @@
         <label for="title">Title (optional)</label>
         <input type="text" id="title" placeholder="e.g., Security Memo" />
         <label for="text">Document text</label>
-<<<<<<< HEAD
-  <textarea id="text" placeholder="Paste the document text here..."></textarea>
-  <label for="file" style="margin-top:8px">Or choose a file</label>
-  <input type="file" id="file" accept=".txt,.md,.doc,.docx,.pptx,.csv,.xlsx" />
-=======
         <textarea id="text" placeholder="Paste the document text here..."></textarea>
-          <label for="file">Or select a file to upload</label>
-          <input type="file" id="file" accept=".txt,.md,.pdf,.doc,.docx" />
->>>>>>> parent of 30afa2e (roll back changes)
         <div style="display:flex; gap:10px; align-items:center; margin-top:10px">
           <button id="uploadBtn" disabled>Upload</button>
           <span id="uploadMsg"></span>
@@ -149,49 +141,13 @@
       try {
         const title = document.getElementById('title').value || 'Untitled';
         const text  = document.getElementById('text').value.trim();
-        const fileInput = document.getElementById('file');
-<<<<<<< HEAD
-        const file = fileInput && fileInput.files && fileInput.files[0];
-
-        let r;
-        if (file) {
-          // send multipart/form-data
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('title', title);
-          log(`Uploading file ${file.name} (${file.size} bytes) to session ${sessionId}...`);
-          r = await fetch(`/session/${encodeURIComponent(sessionId)}/upload`, {
-            method: 'POST',
-            body: formData
-          });
-        } else {
-          if (!text) { alert('Please paste some document text or select a file.'); return; }
-          log(`Uploading document (${text.length} chars) to session ${sessionId}...`);
-          r = await fetch(`/session/${encodeURIComponent(sessionId)}/upload`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, text })
-          });
-        }
-=======
-        const file = fileInput.files[0];
-        let formData = new FormData();
-        formData.append('title', title);
-        if (file) {
-          log(`Uploading file (${file.name}, ${file.size} bytes) to session ${sessionId}...`);
-          formData.append('file', file);
-        } else if (text) {
-          log(`Uploading document (${text.length} chars) to session ${sessionId}...`);
-          formData.append('text', text);
-        } else {
-          alert('Please paste some document text or select a file.');
-          return;
-        }
+        if (!text) { alert('Please paste some document text.'); return; }
+        log(`Uploading document (${text.length} chars) to session ${sessionId}...`);
         const r = await fetch(`/session/${encodeURIComponent(sessionId)}/upload`, {
           method: 'POST',
-          body: formData
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, text })
         });
->>>>>>> parent of 30afa2e (roll back changes)
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = await r.json();
         setDoc(j.docId);
