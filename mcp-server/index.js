@@ -5,12 +5,7 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const { v4: uuidv4 } = require('uuid');
-const multer = require('multer');
-const upload = multer();
-const mammoth = require('mammoth');
-const pptxParser = require('pptx-parser');
-const csvParse = require('csv-parse/lib/sync');
-const XLSX = require('xlsx');
+// ...existing code...
 
 const app = express();
 
@@ -38,44 +33,11 @@ app.post('/session', (req, res) => {
   res.json({ sessionId: sid });
 });
 
-app.post('/session/:sid/upload', upload.single('file'), async (req, res) => {
+app.post('/session/:sid/upload', (req, res) => {
   const { sid } = req.params;
   if (!sessions[sid]) return res.status(404).send('Session not found');
 
-  let text = '';
-  let title = req.body.title || 'Untitled';
-
-  if (req.file) {
-    const mime = req.file.mimetype;
-    const ext = (req.file.originalname || '').split('.').pop().toLowerCase();
-    try {
-      if (mime === 'text/plain' || ext === 'txt') {
-        text = req.file.buffer.toString('utf8');
-      } else if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || ext === 'docx') {
-        const result = await mammoth.extractRawText({ buffer: req.file.buffer });
-        text = result.value;
-      } else if (mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || ext === 'pptx') {
-        const slides = await pptxParser.parse(req.file.buffer);
-        text = slides.map(s => s.text).join('\n---\n');
-      } else if (mime === 'text/csv' || ext === 'csv') {
-        text = csvParse(req.file.buffer.toString('utf8')).map(row => row.join(', ')).join('\n');
-      } else if (mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || ext === 'xlsx' || mime === 'application/vnd.ms-excel') {
-        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-        text = workbook.SheetNames.map(name => XLSX.utils.sheet_to_csv(workbook.Sheets[name])).join('\n');
-      } else {
-        return res.status(400).json({ error: 'Unsupported file type.' });
-      }
-    } catch (err) {
-      return res.status(500).json({ error: 'Failed to parse file: ' + err.message });
-    }
-  } else {
-    text = req.body.text || '';
-  }
-
-  if (!text) {
-    return res.status(400).json({ error: 'No document text provided.' });
-  }
-
+  const { text, title } = req.body;
   const docId = uuidv4();
   sessions[sid].docs.push({ id: docId, title, text });
   console.log(`📄 Uploaded document ${docId} to session ${sid}`);
@@ -90,9 +52,7 @@ app.post('/session/:sid/query', async (req, res) => {
   const doc = sessions[sid].docs.find(d => d.id === docId);
   if (!doc) return res.status(404).send('Document not found');
 
-  // Log the document text for debugging
-  console.log("🔹 Document text for analysis:");
-  console.log(doc.text ? doc.text.substring(0, 1000) : '[EMPTY]');
+  // ...existing code...
 
   const prompt = mode === 'qa'
     ? `Document:\n${doc.text}\n\nQuestion: ${query}\nAnswer:`
