@@ -60,6 +60,8 @@
         <input type="text" id="title" placeholder="e.g., Security Memo" />
         <label for="text">Document text</label>
         <textarea id="text" placeholder="Paste the document text here..."></textarea>
+          <label for="file">Or select a file to upload</label>
+          <input type="file" id="file" accept=".txt,.md,.pdf,.doc,.docx" />
         <div style="display:flex; gap:10px; align-items:center; margin-top:10px">
           <button id="uploadBtn" disabled>Upload</button>
           <span id="uploadMsg"></span>
@@ -141,12 +143,23 @@
       try {
         const title = document.getElementById('title').value || 'Untitled';
         const text  = document.getElementById('text').value.trim();
-        if (!text) { alert('Please paste some document text.'); return; }
-        log(`Uploading document (${text.length} chars) to session ${sessionId}...`);
+        const fileInput = document.getElementById('file');
+        const file = fileInput.files[0];
+        let formData = new FormData();
+        formData.append('title', title);
+        if (file) {
+          log(`Uploading file (${file.name}, ${file.size} bytes) to session ${sessionId}...`);
+          formData.append('file', file);
+        } else if (text) {
+          log(`Uploading document (${text.length} chars) to session ${sessionId}...`);
+          formData.append('text', text);
+        } else {
+          alert('Please paste some document text or select a file.');
+          return;
+        }
         const r = await fetch(`/session/${encodeURIComponent(sessionId)}/upload`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, text })
+          body: formData
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = await r.json();

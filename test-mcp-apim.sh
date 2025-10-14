@@ -7,7 +7,7 @@ if [ -f .env ]; then
 fi
 
 # --- CONFIG ---
-APIM_URL="https://mcp-apim-davisanc.azure-api.net/mcp"
+APIM_URL="https://mcp-apim-davisanc.azure-api.net/"
 
 HEADERS=(-H "Content-Type: application/json")
 
