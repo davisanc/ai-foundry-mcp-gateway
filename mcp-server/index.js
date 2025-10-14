@@ -90,6 +90,10 @@ app.post('/session/:sid/query', async (req, res) => {
   const doc = sessions[sid].docs.find(d => d.id === docId);
   if (!doc) return res.status(404).send('Document not found');
 
+  // Log the document text for debugging
+  console.log("🔹 Document text for analysis:");
+  console.log(doc.text ? doc.text.substring(0, 1000) : '[EMPTY]');
+
   const prompt = mode === 'qa'
     ? `Document:\n${doc.text}\n\nQuestion: ${query}\nAnswer:`
     : `Summarize the following document:\n\n${doc.text}\n\nSummary:`;
@@ -100,7 +104,7 @@ app.post('/session/:sid/query', async (req, res) => {
   // Log everything for debugging
   console.log("🔹 Sending request to Azure GPT-4o-mini...");
   console.log("Endpoint:", endpoint);
-  console.log("Headers:", { "api-key": apiKey.substring(0, 10) + "..." });
+  console.log("Headers:", { "api-key": apiKey ? apiKey.substring(0, 10) + "..." : '[NO KEY]' });
   console.log("Request body:", JSON.stringify({
     messages: [{ role: "user", content: prompt }],
     max_tokens: 300
