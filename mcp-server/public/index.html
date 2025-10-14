@@ -58,34 +58,8 @@
         <h3 style="margin-top:0">2) Upload a document</h3>
         <label for="title">Title (optional)</label>
         <input type="text" id="title" placeholder="e.g., Security Memo" />
-        
-        <!-- Upload method selector -->
-        <label for="uploadMethod">Upload method</label>
-        <select id="uploadMethod">
-          <option value="text">Paste text directly</option>
-          <option value="file">Upload TXT/CSV file</option>
-        </select>
-        
-        <!-- Text input area -->
-        <div id="textUploadArea">
-          <label for="text">Document text</label>
-          <textarea id="text" placeholder="Paste the document text here..."></textarea>
-        </div>
-        
-        <!-- File input area -->
-        <div id="fileUploadArea" style="display:none;">
-          <label for="fileInput">Choose file (.txt or .csv)</label>
-          <input type="file" id="fileInput" accept=".txt,.csv" style="
-            padding: 8px; 
-            border: 1px solid #2a4b74; 
-            border-radius: 8px; 
-            background: #0d2138; 
-            color: var(--ink);
-            cursor: pointer;
-          " />
-          <div id="fileInfo" style="margin-top: 8px; color: var(--muted); font-size: 14px;"></div>
-        </div>
-        
+        <label for="text">Document text</label>
+        <textarea id="text" placeholder="Paste the document text here..."></textarea>
         <div style="display:flex; gap:10px; align-items:center; margin-top:10px">
           <button id="uploadBtn" disabled>Upload</button>
           <span id="uploadMsg"></span>
@@ -166,48 +140,19 @@
     async function uploadDoc() {
       try {
         const title = document.getElementById('title').value || 'Untitled';
-        const uploadMethod = document.getElementById('uploadMethod').value;
-        
-        if (uploadMethod === 'text') {
-          // Text upload
-          const text = document.getElementById('text').value.trim();
-          if (!text) { alert('Please paste some document text.'); return; }
-          
-          log(`Uploading document (${text.length} chars) to session ${sessionId}...`);
-          const r = await fetch(`/session/${encodeURIComponent(sessionId)}/upload`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, text })
-          });
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          const j = await r.json();
-          setDoc(j.docId);
-          document.getElementById('uploadMsg').innerHTML = '<span class="ok">✅ Text uploaded</span>';
-          log(`Document uploaded: ${j.docId}`);
-        } else {
-          // File upload
-          const fileInput = document.getElementById('fileInput');
-          const file = fileInput.files[0];
-          if (!file) { alert('Please select a file to upload.'); return; }
-          
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('title', title);
-          
-          log(`Uploading file "${file.name}" (${file.size} bytes) to session ${sessionId}...`);
-          const r = await fetch(`/session/${encodeURIComponent(sessionId)}/upload-file`, {
-            method: 'POST',
-            body: formData
-          });
-          if (!r.ok) {
-            const errorText = await r.text();
-            throw new Error(`HTTP ${r.status}: ${errorText}`);
-          }
-          const j = await r.json();
-          setDoc(j.docId);
-          document.getElementById('uploadMsg').innerHTML = '<span class="ok">✅ File uploaded</span>';
-          log(`File uploaded: ${j.filename} (${j.docId})`);
-        }
+        const text  = document.getElementById('text').value.trim();
+        if (!text) { alert('Please paste some document text.'); return; }
+        log(`Uploading document (${text.length} chars) to session ${sessionId}...`);
+        const r = await fetch(`/session/${encodeURIComponent(sessionId)}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, text })
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        setDoc(j.docId);
+        document.getElementById('uploadMsg').innerHTML = '<span class="ok">✅ Uploaded</span>';
+        log(`Document uploaded: ${j.docId}`);
       } catch (e) {
         document.getElementById('uploadMsg').innerHTML = `<span class="err">❌ ${e.message}</span>`;
         log(`Error uploading document: ${e}`, 'error');
@@ -252,43 +197,6 @@
     document.getElementById('newSessionBtn').addEventListener('click', createSession);
     document.getElementById('uploadBtn').addEventListener('click', uploadDoc);
     document.getElementById('queryBtn').addEventListener('click', runQuery);
-
-    // Handle upload method change
-    document.getElementById('uploadMethod').addEventListener('change', function() {
-      const method = this.value;
-      const textArea = document.getElementById('textUploadArea');
-      const fileArea = document.getElementById('fileUploadArea');
-      
-      if (method === 'text') {
-        textArea.style.display = 'block';
-        fileArea.style.display = 'none';
-        document.getElementById('text').value = '';
-        document.getElementById('fileInfo').textContent = '';
-      } else {
-        textArea.style.display = 'none';
-        fileArea.style.display = 'block';
-        document.getElementById('fileInput').value = '';
-      }
-    });
-
-    // Handle file selection
-    document.getElementById('fileInput').addEventListener('change', function() {
-      const file = this.files[0];
-      const fileInfo = document.getElementById('fileInfo');
-      
-      if (file) {
-        const sizeKB = (file.size / 1024).toFixed(1);
-        fileInfo.textContent = `Selected: ${file.name} (${sizeKB} KB)`;
-        
-        // Auto-fill title if empty
-        const titleInput = document.getElementById('title');
-        if (!titleInput.value) {
-          titleInput.value = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
-        }
-      } else {
-        fileInfo.textContent = '';
-      }
-    });
 
     // Auto-create a session on page load
     window.addEventListener('DOMContentLoaded', createSession);
