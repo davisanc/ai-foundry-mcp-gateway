@@ -7,9 +7,28 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const { v4: uuidv4 } = require('uuid');
+const multer = require('multer');
 // ...existing code...
 
 const app = express();
+
+// Configure multer for file uploads
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    // Accept only txt and csv files
+    const allowedTypes = ['.txt', '.csv'];
+    const fileExtension = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    if (allowedTypes.includes(fileExtension)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .txt and .csv files are allowed'), false);
+    }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+});
 
 // Serve static files from /public (index.html is our landing page)
 app.use(express.static('public'));
@@ -44,6 +63,29 @@ app.post('/session/:sid/upload', (req, res) => {
   sessions[sid].docs.push({ id: docId, title, text });
   console.log(`📄 Uploaded document ${docId} to session ${sid}`);
   res.json({ docId });
+});
+
+// New endpoint for file uploads
+app.post('/session/:sid/upload-file', upload.single('file'), (req, res) => {
+  const { sid } = req.params;
+  if (!sessions[sid]) return res.status(404).send('Session not found');
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  try {
+    const text = req.file.buffer.toString('utf-8');
+    const title = req.body.title || req.file.originalname;
+    const docId = uuidv4();
+    
+    sessions[sid].docs.push({ id: docId, title, text });
+    console.log(`📁 Uploaded file ${req.file.originalname} (${docId}) to session ${sid}`);
+    res.json({ docId, filename: req.file.originalname });
+  } catch (error) {
+    console.error('Error processing file:', error);
+    res.status(500).json({ error: 'Failed to process file' });
+  }
 });
 
 app.post('/session/:sid/query', async (req, res) => {
