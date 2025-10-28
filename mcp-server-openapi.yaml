@@ -81,3 +81,69 @@ paths:
                 properties:
                   answer:
                     type: string
+  /session/{sid}/upload-file:
+    post:
+      summary: Upload a file (TXT or CSV) to a session
+      parameters:
+        - in: path
+          name: sid
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: TXT or CSV file to upload
+                title:
+                  type: string
+                  description: Optional title for the document
+      responses:
+        '200':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  docId:
+                    type: string
+                  filename:
+                    type: string
+  /mcp/sse:
+    get:
+      summary: Model Context Protocol SSE endpoint
+      description: Server-Sent Events endpoint for MCP clients (Azure AI Agents) to connect
+      responses:
+        '200':
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /mcp/message:
+    post:
+      summary: MCP message endpoint
+      description: Receives messages from MCP clients
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Message received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean

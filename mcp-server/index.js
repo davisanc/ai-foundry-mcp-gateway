@@ -8,6 +8,8 @@ const express = require('express');
 const fetch = require('node-fetch');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
+const { createMCPServer } = require('./mcp-handler');
+const { SSEServerTransport } = require('@modelcontextprotocol/sdk/server/sse.js');
 // ...existing code...
 
 const app = express();
@@ -45,6 +47,27 @@ app.get('/', (_, res) => {
 
 // (Optional) a dedicated health endpoint for probes/APIM
 app.get('/healthz', (_, res) => res.json({ status: 'ok' }));
+
+// ==================== MCP ENDPOINT ====================
+// SSE endpoint for Model Context Protocol
+app.get('/mcp/sse', async (req, res) => {
+  console.log('🔌 MCP SSE connection initiated');
+  
+  const transport = new SSEServerTransport('/mcp/message', res);
+  const mcpServer = createMCPServer(sessions);
+  
+  await mcpServer.connect(transport);
+  
+  console.log('✅ MCP server connected via SSE');
+});
+
+app.post('/mcp/message', async (req, res) => {
+  // This endpoint receives messages from the MCP client
+  // The SSE transport handles the actual message processing
+  console.log('📨 MCP message received:', req.body);
+  res.json({ received: true });
+});
+// ==================== END MCP ENDPOINT ====================
 
 
 app.post('/session', (req, res) => {
