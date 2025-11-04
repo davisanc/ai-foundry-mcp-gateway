@@ -34,6 +34,8 @@ def main():
     
     try:
         print("📡 Connecting to Azure AI Project...")
+        print(f"   Using endpoint: {project_endpoint}")
+        print()
         
         # Initialize the client with the project endpoint
         # The new SDK uses project_endpoint instead of individual parameters
@@ -144,11 +146,19 @@ Be helpful, professional, and thorough in your analysis.""",
         print("=" * 70)
         print("Possible causes:")
         print("1. Project type might be hub-based (not supported)")
-        print("   - Check: az ml workspace show --name", project_name)
+        print(f"   - Check: az resource show --name {project_name} --resource-group {resource_group}")
         print("2. Incorrect endpoint format")
         print(f"   - Current endpoint: {project_endpoint}")
-        print("3. Missing role assignments (need 'Azure AI Developer' or 'Azure AI User' role)")
-        print("4. SDK version incompatibility (need azure-ai-projects >= 1.0.0)")
+        print("   - Try finding correct endpoint at: https://ai.azure.com")
+        print("     → Go to your project → Settings → Project properties")
+        print("3. Missing role assignments")
+        print("   - Need 'Azure AI Developer' or 'Azure AI User' role")
+        print(f"   - Run: az role assignment create --assignee <your-email> \\")
+        print(f"     --role 'Azure AI Developer' \\")
+        print(f"     --scope /subscriptions/{subscription_id}/resourceGroups/{resource_group}")
+        print("4. SDK version incompatibility")
+        print("   - Need azure-ai-projects >= 1.0.0")
+        print("   - Current SDK supports preview API version 2025-05-15-preview")
         print()
         print("Your MCP server is still deployed successfully at:")
         print(f"  {mcp_url}")
@@ -158,6 +168,7 @@ Be helpful, professional, and thorough in your analysis.""",
         print(f"2. Navigate to project: {project_name}")
         print("3. Create a new agent with MCP connection")
         print(f"4. Use MCP URL: {mcp_url}")
+        print("5. Add these tools: list_documents, get_document, search_documents")
         print("=" * 70)
         
         # Don't fail the deployment - MCP server is deployed successfully

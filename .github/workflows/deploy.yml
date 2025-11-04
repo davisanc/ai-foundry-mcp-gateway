@@ -134,41 +134,54 @@ jobs:
     - name: Get Project Connection Details
       id: project_details
       run: |
-        # Get the project details to construct the correct endpoint
-        PROJECT_JSON=$(az ml workspace show \
+        # Get the Azure AI Foundry project details
+        # Note: AI Foundry projects are NOT ML workspaces, they're a different resource type
+        echo "🔍 Looking up AI Foundry project: $AI_PROJECT_NAME"
+        
+        # Try to get project using Azure AI resource type
+        PROJECT_JSON=$(az resource show \
           --name $AI_PROJECT_NAME \
           --resource-group $AZURE_RESOURCE_GROUP \
-          --output json)
+          --resource-type "Microsoft.MachineLearningServices/workspaces" \
+          --output json 2>/dev/null || echo "{}")
         
-        # Extract the discovery URL which contains the AI services endpoint
-        DISCOVERY_URL=$(echo $PROJECT_JSON | jq -r '.discovery_url // empty')
+        # Check if we got a valid response
+        if [ "$(echo $PROJECT_JSON | jq -r '.id // empty')" = "" ]; then
+          echo "⚠️  Could not find project as ML workspace, trying as AI Services account..."
+          
+          # Try alternative resource type for AI Foundry
+          PROJECT_JSON=$(az resource show \
+            --name $AI_PROJECT_NAME \
+            --resource-group $AZURE_RESOURCE_GROUP \
+            --resource-type "Microsoft.CognitiveServices/accounts" \
+            --output json 2>/dev/null || echo "{}")
+        fi
         
-        # Try to get workspace_id (this might be the AI services account)
-        WORKSPACE_ID=$(echo $PROJECT_JSON | jq -r '.workspace_id // empty')
+        # Extract properties
+        LOCATION=$(echo $PROJECT_JSON | jq -r '.location // "westeurope"')
+        RESOURCE_ID=$(echo $PROJECT_JSON | jq -r '.id // empty')
+        PROPERTIES=$(echo $PROJECT_JSON | jq -r '.properties // {}')
         
-        # Extract location
-        LOCATION=$(echo $PROJECT_JSON | jq -r '.location // empty')
-        
-        echo "Discovery URL: $DISCOVERY_URL"
-        echo "Workspace ID: $WORKSPACE_ID"
         echo "Location: $LOCATION"
+        echo "Resource ID: $RESOURCE_ID"
         
-        # The correct endpoint format should be:
-        # https://<your-ai-services-account>.services.ai.azure.com/api/projects/<ProjectName>
-        # We'll try to construct this or use the discovery URL
+        # For Azure AI Foundry, the endpoint format is:
+        # https://<region>.api.azureml.ms/api/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.MachineLearningServices/workspaces/<project>
+        # OR
+        # https://<ai-services-name>.services.ai.azure.com/api/projects/<ProjectName>
         
-        if [ -n "$DISCOVERY_URL" ]; then
-          # Extract the base domain from discovery URL
-          BASE_DOMAIN=$(echo $DISCOVERY_URL | sed -E 's|https://([^/]+).*|\1|')
-          # Construct the project endpoint
-          PROJECT_ENDPOINT="https://${BASE_DOMAIN}/api/projects/${AI_PROJECT_NAME}"
+        # Try to construct the endpoint - use the newer format
+        if [ -n "$RESOURCE_ID" ]; then
+          # Use resource ID based endpoint
+          PROJECT_ENDPOINT="https://${LOCATION}.api.azureml.ms${RESOURCE_ID}"
         else
-          # Fallback to constructing from location
-          PROJECT_ENDPOINT="https://${LOCATION}.api.azureml.ms/api/projects/${AI_PROJECT_NAME}"
+          # Fallback: construct endpoint from project name
+          # This is the format for newer AI Foundry projects
+          PROJECT_ENDPOINT="https://${LOCATION}.api.azureml.ms/api/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${AZURE_RESOURCE_GROUP}/providers/Microsoft.MachineLearningServices/workspaces/${AI_PROJECT_NAME}"
         fi
         
         echo "project_endpoint=$PROJECT_ENDPOINT" >> $GITHUB_OUTPUT
-        echo "Constructed Project Endpoint: $PROJECT_ENDPOINT"
+        echo "✅ Constructed Project Endpoint: $PROJECT_ENDPOINT"
 
     - name: Create or Update AI Agent
       env:
