@@ -145,14 +145,20 @@ jobs:
         subscription_id = os.environ['AZURE_SUBSCRIPTION_ID']
         resource_group = os.environ['AZURE_RESOURCE_GROUP']
         project_name = os.environ['AI_PROJECT_NAME']
+        location = os.environ['LOCATION']
+        
+        # Construct the project endpoint
+        endpoint = f"https://{location}.api.azureml.ms"
         
         print(f"🔗 Connecting to project: {project_name}")
         print(f"   Resource Group: {resource_group}")
         print(f"   Subscription: {subscription_id}")
+        print(f"   Endpoint: {endpoint}")
         
         try:
-            # Initialize AIProjectClient with required parameters
+            # Initialize AIProjectClient with all required parameters
             client = AIProjectClient(
+                endpoint=endpoint,
                 credential=credential,
                 subscription_id=subscription_id,
                 resource_group_name=resource_group,
