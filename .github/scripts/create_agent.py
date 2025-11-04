@@ -72,8 +72,7 @@ Be helpful, professional, and thorough in your analysis.""",
                 {
                     "type": "mcp",
                     "server_label": "document-mcp-server",
-                    "server_url": mcp_url,
-                    "transport": "sse"
+                    "server_url": mcp_url
                 }
             ],
             "metadata": {
@@ -81,6 +80,10 @@ Be helpful, professional, and thorough in your analysis.""",
                 "project": project_name
             }
         }
+        
+        print("Agent payload:")
+        print(json.dumps(agent_payload, indent=2))
+        print()
         
         headers = {
             "Authorization": f"Bearer {access_token}",
