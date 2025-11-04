@@ -4,8 +4,14 @@ Create or update Azure AI Agent with MCP tools
 """
 import os
 import sys
-from azure.ai.projects import AIProjectClient
+import json
+import requests
 from azure.identity import DefaultAzureCredential
+
+def get_access_token(credential):
+    """Get Azure access token for AI services"""
+    token = credential.get_token("https://ml.azure.com/.default")
+    return token.token
 
 def main():
     # Get configuration from environment
@@ -17,74 +23,45 @@ def main():
     mcp_url = f"https://{os.environ['WEBAPP_NAME']}.azurewebsites.net/mcp/sse"
     
     print("=" * 70)
-    print("🔧 Azure AI Agent Creation")
+    print("🔧 Azure AI Agent Creation (Direct REST API)")
     print("=" * 70)
     print(f"Project Name: {project_name}")
     print(f"Project Endpoint: {project_endpoint}")
     print(f"Resource Group: {resource_group}")
     print(f"MCP URL: {mcp_url}")
-    print(f"SDK Version: ", end="")
-    
-    import azure.ai.projects
-    print(azure.ai.projects.__version__)
     print()
     
     # Initialize credential
     credential = DefaultAzureCredential()
     
     try:
-        print("📡 Connecting to Azure AI Project...")
-        print(f"   Using endpoint: {project_endpoint}")
+        print("� Getting Azure access token...")
+        access_token = get_access_token(credential)
+        print("✅ Got access token")
         print()
         
-        # Initialize the client with the project endpoint
-        # The new SDK uses project_endpoint instead of individual parameters
-        client = AIProjectClient(
-            endpoint=project_endpoint,
-            credential=credential,
-            subscription_id=subscription_id,
-            resource_group_name=resource_group,
-            project_name=project_name
-        )
+        # Try to use the Azure AI Agents REST API directly
+        # The endpoint should be the AI services endpoint, not the project endpoint
+        # Format: https://<region>.api.azureml.ms or https://<ai-service>.cognitiveservices.azure.com
         
-        print("✅ Successfully connected to AI Project!")
+        print("📡 Attempting to create agent via REST API...")
+        
+        # Construct the agent API endpoint
+        # For Cognitive Services accounts, the endpoint is different
+        base_url = project_endpoint.replace("/subscriptions/", "/").split("/subscriptions/")[0]
+        
+        # Try Azure OpenAI Assistants API format (which Azure AI Foundry uses)
+        api_endpoint = f"{base_url}/openai/assistants?api-version=2024-05-01-preview"
+        
+        print(f"   API Endpoint: {api_endpoint}")
         print()
         
-        # Check if agents API is available
-        print("🔍 Checking for existing agents...")
-        try:
-            existing_agents = list(client.agents.list_agents())
-            print(f"✅ Agent API is available")
-            print(f"   Found {len(existing_agents)} existing agent(s)")
-            
-            # Check if our agent already exists
-            existing_agent = None
-            for agent in existing_agents:
-                if hasattr(agent, 'name') and agent.name == agent_name:
-                    existing_agent = agent
-                    print(f"   ⚠️  Agent '{agent_name}' already exists (ID: {agent.id})")
-                    break
-            
-            print()
-            
-        except Exception as list_error:
-            print(f"⚠️  Could not list agents: {list_error}")
-            print(f"   Continuing with creation attempt...")
-            print()
-            existing_agent = None
-        
-        if existing_agent:
-            print(f"ℹ️  Using existing agent: {existing_agent.id}")
-            agent = existing_agent
-        else:
-            # Create new agent with MCP tools
-            print(f"🤖 Creating new agent: {agent_name}...")
-            
-            agent_config = {
-                "model": "gpt-4o-mini",
-                "name": agent_name,
-                "description": "AI agent that analyzes documents using MCP gateway",
-                "instructions": """You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
+        # Agent configuration
+        agent_payload = {
+            "model": "gpt-4o-mini",
+            "name": agent_name,
+            "description": "AI agent that analyzes documents using MCP gateway",
+            "instructions": """You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
 
 When users ask about documents:
 1. Use list_documents to see available documents in their session
@@ -94,40 +71,59 @@ When users ask about documents:
 
 Always cite which document you're referencing in your answers.
 Be helpful, professional, and thorough in your analysis.""",
-                "tools": [
-                    {
-                        "type": "mcp",
-                        "mcp": {
-                            "url": mcp_url,
-                            "transport": "sse"
-                        }
+            "tools": [
+                {
+                    "type": "mcp",
+                    "mcp": {
+                        "url": mcp_url,
+                        "transport": "sse"
                     }
-                ]
+                }
+            ],
+            "metadata": {
+                "created_by": "github-actions",
+                "project": project_name
             }
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        response = requests.post(api_endpoint, headers=headers, json=agent_payload, timeout=30)
+        
+        print(f"Response Status: {response.status_code}")
+        print(f"Response Headers: {dict(response.headers)}")
+        print()
+        
+        if response.status_code in [200, 201]:
+            agent_data = response.json()
+            print("=" * 70)
+            print("🎉 Agent Created Successfully!")
+            print("=" * 70)
+            print(f"Agent ID: {agent_data.get('id', 'N/A')}")
+            print(f"Agent Name: {agent_data.get('name', agent_name)}")
+            print(f"MCP Endpoint: {mcp_url}")
+            print()
+            print("Next Steps:")
+            print("1. Go to https://ai.azure.com")
+            print(f"2. Open project: {project_name}")
+            print("3. Find your agent in the Agents section")
+            print("4. Test it by uploading a document and asking questions!")
+            print("=" * 70)
             
-            agent = client.agents.create_agent(**agent_config)
-            print(f"✅ Agent created successfully!")
-        
-        print()
-        print("=" * 70)
-        print("🎉 Agent Configuration Complete!")
-        print("=" * 70)
-        print(f"Agent ID: {agent.id}")
-        print(f"Agent Name: {agent.name if hasattr(agent, 'name') else 'N/A'}")
-        print(f"MCP Endpoint: {mcp_url}")
-        print()
-        print("Next Steps:")
-        print("1. Go to https://ai.azure.com")
-        print(f"2. Open project: {project_name}")
-        print("3. Find your agent in the Agents section")
-        print("4. Test it by uploading a document and asking questions!")
-        print("=" * 70)
-        
-        # Save agent ID for later use
-        with open('agent_id.txt', 'w') as f:
-            f.write(agent.id)
-        
-        return 0
+            # Save agent ID
+            with open('agent_id.txt', 'w') as f:
+                f.write(agent_data.get('id', ''))
+            
+            return 0
+        else:
+            print("⚠️  API call failed")
+            print(f"Status: {response.status_code}")
+            print(f"Response: {response.text}")
+            print()
+            raise Exception(f"Agent creation failed with status {response.status_code}")
             
     except Exception as e:
         import traceback
@@ -144,30 +140,24 @@ Be helpful, professional, and thorough in your analysis.""",
         print("=" * 70)
         print("📋 Troubleshooting")
         print("=" * 70)
-        print("Possible causes:")
-        print("1. Project type might be hub-based (not supported)")
-        print(f"   - Check: az resource show --name {project_name} --resource-group {resource_group}")
-        print("2. Incorrect endpoint format")
-        print(f"   - Current endpoint: {project_endpoint}")
-        print("   - Try finding correct endpoint at: https://ai.azure.com")
-        print("     → Go to your project → Settings → Project properties")
-        print("3. Missing role assignments")
-        print("   - Need 'Azure AI Developer' or 'Azure AI User' role")
-        print(f"   - Run: az role assignment create --assignee <your-email> \\")
-        print(f"     --role 'Azure AI Developer' \\")
-        print(f"     --scope /subscriptions/{subscription_id}/resourceGroups/{resource_group}")
-        print("4. SDK version incompatibility")
-        print("   - Need azure-ai-projects >= 1.0.0")
-        print("   - Current SDK supports preview API version 2025-05-15-preview")
+        print("The azure-ai-projects Python SDK may not fully support agent")
+        print("creation for your project type yet.")
         print()
-        print("Your MCP server is still deployed successfully at:")
+        print("Recommended approach: Create the agent manually")
+        print()
+        print("Your MCP server is deployed successfully at:")
         print(f"  {mcp_url}")
         print()
         print("To create the agent manually:")
         print("1. Go to https://ai.azure.com")
         print(f"2. Navigate to project: {project_name}")
-        print("3. Create a new agent with MCP connection")
-        print(f"4. Use MCP URL: {mcp_url}")
+        print(f"3. Resource Group: {resource_group}")
+        print("4. Create a new agent:")
+        print(f"   - Name: {agent_name}")
+        print("   - Model: gpt-4o-mini")
+        print("   - Add MCP connection:")
+        print(f"     * URL: {mcp_url}")
+        print("     * Transport: sse")
         print("5. Add these tools: list_documents, get_document, search_documents")
         print("=" * 70)
         
