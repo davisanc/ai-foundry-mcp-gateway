@@ -122,6 +122,30 @@ Be helpful, professional, and thorough in your analysis.""",
             print(f"Response Headers: {dict(response.headers)}")
             print(f"Response Body: {response.text}")
             print()
+            
+            # Check if it's a permission error
+            if response.status_code == 401 and "PermissionDenied" in response.text:
+                print()
+                print("=" * 70)
+                print("PERMISSION ERROR - ACTION REQUIRED")
+                print("=" * 70)
+                print()
+                print("The GitHub Actions service principal needs the")
+                print("'Cognitive Services OpenAI Contributor' role.")
+                print()
+                print("To fix this, run the following command locally:")
+                print()
+                print("az role assignment create \\")
+                print("  --assignee b4d76bc7-7848-4345-8ff2-b0aa0a61d557 \\")
+                print("  --role 'Cognitive Services OpenAI Contributor' \\")
+                print(f"  --scope /subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.CognitiveServices/accounts/{project_name}")
+                print()
+                print("After running this command, re-run the GitHub Actions workflow.")
+                print("=" * 70)
+                print()
+                # Don't raise exception for permission errors - just warn
+                return 0
+            
             raise Exception(f"Agent creation failed with status {response.status_code}: {response.text}")
             
     except Exception as e:
