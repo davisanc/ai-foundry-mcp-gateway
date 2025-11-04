@@ -71,7 +71,7 @@ Be helpful, professional, and thorough in your analysis.""",
             "tools": [
                 {
                     "type": "mcp",
-                    "server_label": "document-mcp-server",
+                    "server_label": "document_mcp_server",
                     "server_url": mcp_url
                 }
             ],
