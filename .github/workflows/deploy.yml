@@ -173,12 +173,32 @@ jobs:
         # MCP server URL
         mcp_url = f"https://{os.environ['WEBAPP_NAME']}.azurewebsites.net/mcp/sse"
         
-        # Agent configuration
-        agent_config = {
-            "model": "gpt-4o-mini",
-            "name": os.environ['AI_AGENT_NAME'],
-            "description": "AI agent that analyzes documents using MCP gateway",
-            "instructions": """You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
+        print(f"📝 Agent Configuration:")
+        print(f"   Name: {os.environ['AI_AGENT_NAME']}")
+        print(f"   Model: gpt-4o-mini")
+        print(f"   MCP URL: {mcp_url}")
+        
+        try:
+            # Check if the agents API is available
+            print(f"\n🔍 Checking agent API availability...")
+            
+            # Try to list existing agents first
+            try:
+                agents = client.agents.list_agents()
+                print(f"✅ Agent API is available")
+                print(f"   Found {len(list(agents))} existing agents")
+            except AttributeError:
+                print(f"⚠️  Agent API not found on client")
+                print(f"   The azure-ai-projects SDK may not support agents yet")
+                print(f"   or you need to use a different API version")
+                raise
+            
+            # Agent configuration without MCP (try basic first)
+            basic_agent_config = {
+                "model": "gpt-4o-mini",
+                "name": os.environ['AI_AGENT_NAME'],
+                "description": "AI agent that analyzes documents using MCP gateway",
+                "instructions": """You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
         
         When users ask about documents:
         1. Use list_documents to see available documents in their session
@@ -187,35 +207,56 @@ jobs:
         4. Provide clear, accurate answers based on the document content
         
         Always cite which document you're referencing in your answers.
-        Be helpful, professional, and thorough in your analysis.""",
-            "tools": [
-                {
-                    "type": "mcp",
-                    "mcp": {
-                        "url": mcp_url,
-                        "transport": "sse"
-                    }
-                }
-            ]
-        }
-        
-        try:
-            # Try to create the agent
-            agent = client.agents.create_agent(**agent_config)
+        Be helpful, professional, and thorough in your analysis."""
+            }
+            
+            print(f"\n🤖 Creating agent (basic configuration first)...")
+            agent = client.agents.create_agent(**basic_agent_config)
             print(f"✅ Agent created successfully!")
             print(f"   Agent ID: {agent.id}")
             print(f"   Agent Name: {agent.name}")
-            print(f"   MCP URL: {mcp_url}")
+            
+            # Now try to add MCP tools
+            print(f"\n🔧 Attempting to add MCP tools...")
+            try:
+                # Update agent with MCP tools
+                mcp_config = {
+                    "tools": [
+                        {
+                            "type": "mcp",
+                            "mcp": {
+                                "url": mcp_url,
+                                "transport": "sse"
+                            }
+                        }
+                    ]
+                }
+                updated_agent = client.agents.update_agent(agent.id, **mcp_config)
+                print(f"✅ MCP tools added to agent!")
+                print(f"   MCP URL: {mcp_url}")
+            except Exception as mcp_error:
+                print(f"⚠️  Could not add MCP tools: {mcp_error}")
+                print(f"   Agent created without MCP. You can add MCP manually in Azure AI Foundry.")
             
             # Save agent ID for later use
             with open('agent_id.txt', 'w') as f:
                 f.write(agent.id)
                 
         except Exception as e:
-            print(f"⚠️  Error creating agent: {e}")
-            print(f"   This may be normal if the agent already exists or if MCP support is not available.")
-            print(f"   MCP server is still available at: {mcp_url}")
-            print(f"   You can create the agent manually in Azure AI Foundry portal.")
+            import traceback
+            print(f"⚠️  Error with agent API: {e}")
+            print(f"   Error type: {type(e).__name__}")
+            print(f"   Traceback:")
+            traceback.print_exc()
+            print(f"\n📌 Note: Automated agent creation may not be supported yet.")
+            print(f"   MCP server is deployed and available at: {mcp_url}")
+            print(f"\n📖 To create the agent manually:")
+            print(f"   1. Go to https://ai.azure.com")
+            print(f"   2. Navigate to your project: {project_name}")
+            print(f"   3. Create a new agent with these settings:")
+            print(f"      - Name: {os.environ['AI_AGENT_NAME']}")
+            print(f"      - Model: gpt-4o-mini")
+            print(f"      - Add MCP connection: {mcp_url}")
         
         EOF
 
