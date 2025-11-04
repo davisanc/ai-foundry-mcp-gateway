@@ -72,10 +72,8 @@ Be helpful, professional, and thorough in your analysis.""",
                 {
                     "type": "mcp",
                     "server_label": "document-mcp-server",
-                    "mcp": {
-                        "url": mcp_url,
-                        "transport": "sse"
-                    }
+                    "server_url": mcp_url,
+                    "transport": "sse"
                 }
             ],
             "metadata": {
