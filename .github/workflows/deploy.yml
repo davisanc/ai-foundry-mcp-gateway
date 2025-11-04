@@ -7,6 +7,7 @@ on:
 
 env:
   AZURE_RESOURCE_GROUP: ai-mcp-rg
+  AI_PROJECT_RESOURCE_GROUP: ${{ secrets.AI_PROJECT_RESOURCE_GROUP || 'AI-RG' }}
   LOCATION: westeurope
   APP_SERVICE_PLAN: mcp-asp
   WEBAPP_NAME: mcp-server-app-davisanc
@@ -134,54 +135,7 @@ jobs:
     - name: Get Project Connection Details
       id: project_details
       run: |
-        # Get the Azure AI Foundry project details
-        # Note: AI Foundry projects are NOT ML workspaces, they're a different resource type
-        echo "🔍 Looking up AI Foundry project: $AI_PROJECT_NAME"
-        
-        # Try to get project using Azure AI resource type
-        PROJECT_JSON=$(az resource show \
-          --name $AI_PROJECT_NAME \
-          --resource-group $AZURE_RESOURCE_GROUP \
-          --resource-type "Microsoft.MachineLearningServices/workspaces" \
-          --output json 2>/dev/null || echo "{}")
-        
-        # Check if we got a valid response
-        if [ "$(echo $PROJECT_JSON | jq -r '.id // empty')" = "" ]; then
-          echo "⚠️  Could not find project as ML workspace, trying as AI Services account..."
-          
-          # Try alternative resource type for AI Foundry
-          PROJECT_JSON=$(az resource show \
-            --name $AI_PROJECT_NAME \
-            --resource-group $AZURE_RESOURCE_GROUP \
-            --resource-type "Microsoft.CognitiveServices/accounts" \
-            --output json 2>/dev/null || echo "{}")
-        fi
-        
-        # Extract properties
-        LOCATION=$(echo $PROJECT_JSON | jq -r '.location // "westeurope"')
-        RESOURCE_ID=$(echo $PROJECT_JSON | jq -r '.id // empty')
-        PROPERTIES=$(echo $PROJECT_JSON | jq -r '.properties // {}')
-        
-        echo "Location: $LOCATION"
-        echo "Resource ID: $RESOURCE_ID"
-        
-        # For Azure AI Foundry, the endpoint format is:
-        # https://<region>.api.azureml.ms/api/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.MachineLearningServices/workspaces/<project>
-        # OR
-        # https://<ai-services-name>.services.ai.azure.com/api/projects/<ProjectName>
-        
-        # Try to construct the endpoint - use the newer format
-        if [ -n "$RESOURCE_ID" ]; then
-          # Use resource ID based endpoint
-          PROJECT_ENDPOINT="https://${LOCATION}.api.azureml.ms${RESOURCE_ID}"
-        else
-          # Fallback: construct endpoint from project name
-          # This is the format for newer AI Foundry projects
-          PROJECT_ENDPOINT="https://${LOCATION}.api.azureml.ms/api/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${AZURE_RESOURCE_GROUP}/providers/Microsoft.MachineLearningServices/workspaces/${AI_PROJECT_NAME}"
-        fi
-        
-        echo "project_endpoint=$PROJECT_ENDPOINT" >> $GITHUB_OUTPUT
-        echo "✅ Constructed Project Endpoint: $PROJECT_ENDPOINT"
+        bash .github/scripts/get_project_endpoint.sh
 
     - name: Create or Update AI Agent
       env:

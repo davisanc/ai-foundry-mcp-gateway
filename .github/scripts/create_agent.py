@@ -11,7 +11,7 @@ def main():
     # Get configuration from environment
     project_endpoint = os.environ['PROJECT_ENDPOINT']
     subscription_id = os.environ['AZURE_SUBSCRIPTION_ID']
-    resource_group = os.environ['AZURE_RESOURCE_GROUP']
+    resource_group = os.environ.get('AI_PROJECT_RESOURCE_GROUP', os.environ['AZURE_RESOURCE_GROUP'])
     project_name = os.environ['AI_PROJECT_NAME']
     agent_name = os.environ['AI_AGENT_NAME']
     mcp_url = f"https://{os.environ['WEBAPP_NAME']}.azurewebsites.net/mcp/sse"
