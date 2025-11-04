@@ -129,29 +129,9 @@ jobs:
       run: |
         pip install azure-ai-projects azure-identity
 
-    - name: Get AI Project Endpoint
-      id: get_endpoint
-      run: |
-        # Get the workspace/project details
-        ENDPOINT=$(az ml workspace show \
-          --name $AI_PROJECT_NAME \
-          --resource-group $AZURE_RESOURCE_GROUP \
-          --query discoveryUrl -o tsv 2>/dev/null || echo "")
-        
-        if [ -z "$ENDPOINT" ]; then
-          # If discoveryUrl is not available, construct the endpoint
-          ENDPOINT="https://${LOCATION}.api.azureml.ms/discovery/v1.0/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${AZURE_RESOURCE_GROUP}/providers/Microsoft.MachineLearningServices/workspaces/${AI_PROJECT_NAME}"
-        fi
-        
-        echo "endpoint=$ENDPOINT" >> $GITHUB_OUTPUT
-        echo "Project endpoint: $ENDPOINT"
-      env:
-        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
     - name: Create or Update AI Agent
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        PROJECT_ENDPOINT: ${{ steps.get_endpoint.outputs.endpoint }}
       run: |
         python - <<'EOF'
         import os
@@ -161,16 +141,24 @@ jobs:
         # Initialize client with endpoint
         credential = DefaultAzureCredential()
         
-        # Get project endpoint
-        project_endpoint = os.environ.get('PROJECT_ENDPOINT')
+        # Get project details
+        subscription_id = os.environ['AZURE_SUBSCRIPTION_ID']
+        resource_group = os.environ['AZURE_RESOURCE_GROUP']
+        project_name = os.environ['AI_PROJECT_NAME']
         
-        print(f"🔗 Connecting to project endpoint: {project_endpoint}")
+        print(f"🔗 Connecting to project: {project_name}")
+        print(f"   Resource Group: {resource_group}")
+        print(f"   Subscription: {subscription_id}")
         
         try:
-            client = AIProjectClient.from_connection_string(
-                conn_str=f"endpoint={project_endpoint};subscription_id={os.environ['AZURE_SUBSCRIPTION_ID']}",
-                credential=credential
+            # Initialize AIProjectClient with required parameters
+            client = AIProjectClient(
+                credential=credential,
+                subscription_id=subscription_id,
+                resource_group_name=resource_group,
+                project_name=project_name
             )
+            print(f"✅ Connected to AI Project successfully!")
         except Exception as e:
             print(f"⚠️  Could not initialize client: {e}")
             print(f"   Skipping agent creation. You can create it manually in Azure AI Foundry.")
