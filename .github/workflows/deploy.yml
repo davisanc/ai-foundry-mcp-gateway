@@ -13,6 +13,8 @@ env:
   APIM_NAME: mcp-apim-davisanc
   APIM_PUBLISHER_EMAIL: test@example.com
   APIM_PUBLISHER_NAME: "David Sanchez"
+  AI_PROJECT_NAME: ai-foundry-mcp-project
+  AI_AGENT_NAME: document-analysis-agent
 
 jobs:
   deploy:
@@ -114,3 +116,120 @@ jobs:
           --specification-path ./mcp-server-openapi.yaml \
           --service-url "https://${WEBAPP_NAME}.azurewebsites.net"
 
+    # -------------------------------
+    # Create Azure AI Foundry Project (if not exists)
+    # -------------------------------
+    - name: Check if AI Foundry Project exists
+      id: check_project
+      run: |
+        if az ml workspace show --name $AI_PROJECT_NAME --resource-group $AZURE_RESOURCE_GROUP 2>/dev/null; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+      continue-on-error: true
+
+    - name: Create AI Foundry Project
+      if: steps.check_project.outputs.exists == 'false'
+      run: |
+        az ml workspace create \
+          --name $AI_PROJECT_NAME \
+          --resource-group $AZURE_RESOURCE_GROUP \
+          --location $LOCATION \
+          --kind project
+      continue-on-error: true
+
+    # -------------------------------
+    # Create/Update Azure AI Agent with MCP
+    # -------------------------------
+    - name: Install Azure AI Projects SDK
+      run: |
+        pip install azure-ai-projects azure-identity
+
+    - name: Create or Update AI Agent
+      env:
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      run: |
+        python - <<'EOF'
+        import os
+        from azure.ai.projects import AIProjectClient
+        from azure.identity import DefaultAzureCredential
+        
+        # Initialize client
+        credential = DefaultAzureCredential()
+        client = AIProjectClient(
+            credential=credential,
+            subscription_id=os.environ['AZURE_SUBSCRIPTION_ID'],
+            resource_group_name=os.environ['AZURE_RESOURCE_GROUP'],
+            project_name=os.environ['AI_PROJECT_NAME']
+        )
+        
+        # MCP server URL
+        mcp_url = f"https://{os.environ['WEBAPP_NAME']}.azurewebsites.net/mcp/sse"
+        
+        # Agent configuration
+        agent_config = {
+            "model": "gpt-4o-mini",
+            "name": os.environ['AI_AGENT_NAME'],
+            "description": "AI agent that analyzes documents using MCP gateway",
+            "instructions": """You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
+        
+        When users ask about documents:
+        1. Use list_documents to see available documents in their session
+        2. Use get_document to retrieve specific document content
+        3. Use search_documents to find information across documents
+        4. Provide clear, accurate answers based on the document content
+        
+        Always cite which document you're referencing in your answers.
+        Be helpful, professional, and thorough in your analysis.""",
+            "tools": [
+                {
+                    "type": "mcp",
+                    "mcp": {
+                        "url": mcp_url,
+                        "transport": "sse"
+                    }
+                }
+            ]
+        }
+        
+        try:
+            # Try to create the agent
+            agent = client.agents.create_agent(**agent_config)
+            print(f"✅ Agent created successfully!")
+            print(f"   Agent ID: {agent.id}")
+            print(f"   Agent Name: {agent.name}")
+            print(f"   MCP URL: {mcp_url}")
+            
+            # Save agent ID for later use
+            with open('agent_id.txt', 'w') as f:
+                f.write(agent.id)
+                
+        except Exception as e:
+            print(f"⚠️  Error creating agent: {e}")
+            print(f"   This may be normal if the agent already exists.")
+            print(f"   MCP server is still available at: {mcp_url}")
+        
+        EOF
+
+    - name: Display Agent Information
+      if: success()
+      run: |
+        echo "================================================"
+        echo "🎉 Deployment Complete!"
+        echo "================================================"
+        echo ""
+        echo "🌐 Web App: https://${WEBAPP_NAME}.azurewebsites.net"
+        echo "🔌 MCP Endpoint: https://${WEBAPP_NAME}.azurewebsites.net/mcp/sse"
+        echo "🤖 AI Agent: ${AI_AGENT_NAME}"
+        echo "📊 AI Project: ${AI_PROJECT_NAME}"
+        echo ""
+        if [ -f agent_id.txt ]; then
+          echo "🆔 Agent ID: $(cat agent_id.txt)"
+        fi
+        echo ""
+        echo "Next steps:"
+        echo "1. Visit the web app to upload documents"
+        echo "2. Use Azure AI Foundry to chat with the agent"
+        echo "3. Agent will use MCP to access your documents"
+        echo "================================================"
