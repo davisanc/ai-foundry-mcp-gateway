@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 """
-Create or update Azure AI Agent with MCP tools
+Create or update Azure AI Agent with MCP tools using Azure AI Projects SDK
 """
 import os
 import sys
 import json
-import requests
+from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models import ConnectionType
 from azure.identity import DefaultAzureCredential
-
-def get_access_token(credential):
-    """Get Azure access token for AI services"""
-    token = credential.get_token("https://cognitiveservices.azure.com/.default")
-    return token.token
 
 def main():
     # Get configuration from environment
@@ -23,42 +19,76 @@ def main():
     mcp_url = f"https://{os.environ['WEBAPP_NAME']}.azurewebsites.net/mcp/sse"
     
     print("=" * 70)
-    print("Azure AI Agent Creation (Direct REST API)")
+    print("Azure AI Agent Creation (Azure AI Projects SDK)")
     print("=" * 70)
     print(f"Project Name: {project_name}")
     print(f"Resource Group: {resource_group}")
     print(f"MCP URL: {mcp_url}")
+    
+    # Import and print SDK version
+    import azure.ai.projects
+    print(f"SDK Version: {azure.ai.projects.__version__}")
     print()
     
     # Initialize credential
     credential = DefaultAzureCredential()
     
     try:
-        print("Getting Azure access token...")
-        access_token = get_access_token(credential)
-        print("Got access token")
-        print()
+        print("Connecting to Azure AI Project...")
         
-        print("Attempting to create agent via REST API...")
-        
-        # For Cognitive Services-based AI Foundry projects, the endpoint is:
-        # https://<resource-name>.services.ai.azure.com/
-        resource_name = project_name
-        
-        # Construct the correct AI Foundry API endpoint
-        foundry_endpoint = f"https://{resource_name}.services.ai.azure.com"
-        api_endpoint = f"{foundry_endpoint}/openai/assistants?api-version=2024-05-01-preview"
+        # For Cognitive Services-based projects, use the services.ai.azure.com endpoint
+        foundry_endpoint = f"https://{project_name}.services.ai.azure.com"
         
         print(f"Foundry Endpoint: {foundry_endpoint}")
-        print(f"API Endpoint: {api_endpoint}")
         print()
         
-        # Agent configuration
-        agent_payload = {
-            "model": "gpt-4o-mini",
-            "name": agent_name,
-            "description": "AI agent that analyzes documents using MCP gateway",
-            "instructions": """You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
+        # Initialize the AI Project Client
+        client = AIProjectClient(
+            endpoint=foundry_endpoint,
+            credential=credential,
+            subscription_id=subscription_id,
+            resource_group_name=resource_group,
+            project_name=project_name
+        )
+        
+        print("Successfully connected to AI Project!")
+        print()
+        
+        # Check for existing agents
+        print("Checking for existing agents...")
+        try:
+            existing_agents = list(client.agents.list_agents())
+            print(f"Found {len(existing_agents)} existing agent(s)")
+            
+            existing_agent = None
+            for agent in existing_agents:
+                if hasattr(agent, 'name') and agent.name == agent_name:
+                    existing_agent = agent
+                    print(f"Agent '{agent_name}' already exists (ID: {agent.id})")
+                    break
+            
+            print()
+            
+        except Exception as list_error:
+            print(f"Could not list agents: {list_error}")
+            print("Continuing with creation attempt...")
+            print()
+            existing_agent = None
+        
+        if existing_agent:
+            print(f"Using existing agent: {existing_agent.id}")
+            agent = existing_agent
+        else:
+            # Create new agent with MCP tools using SDK
+            print(f"Creating new agent: {agent_name}...")
+            print()
+            
+            # Try different MCP tool formats that the SDK might support
+            agent_config = {
+                "model": "gpt-4o-mini",
+                "name": agent_name,
+                "description": "AI agent that analyzes documents using MCP gateway",
+                "instructions": """You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
 
 When users ask about documents:
 1. Use list_documents to see available documents in their session
@@ -68,87 +98,45 @@ When users ask about documents:
 
 Always cite which document you're referencing in your answers.
 Be helpful, professional, and thorough in your analysis.""",
-            "tools": [
-                {
-                    "type": "mcp",
-                    "server_label": "document_mcp_server",
-                    "server_url": mcp_url
-                }
-            ],
-            "metadata": {
-                "created_by": "github-actions",
-                "project": project_name
+                "tools": [
+                    {
+                        "type": "mcp_server",
+                        "mcp_server": {
+                            "server_label": "document_mcp_server",
+                            "server_url": mcp_url
+                        }
+                    }
+                ]
             }
-        }
-        
-        print("Agent payload:")
-        print(json.dumps(agent_payload, indent=2))
-        print()
-        
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-            "api-key": access_token  # Some endpoints need this header instead
-        }
-        
-        print("Sending POST request to create agent...")
-        response = requests.post(api_endpoint, headers=headers, json=agent_payload, timeout=30)
-        
-        print(f"Response Status: {response.status_code}")
-        print()
-        
-        if response.status_code in [200, 201]:
-            agent_data = response.json()
-            print("=" * 70)
-            print("Agent Created Successfully!")
-            print("=" * 70)
-            print(f"Agent ID: {agent_data.get('id', 'N/A')}")
-            print(f"Agent Name: {agent_data.get('name', agent_name)}")
-            print(f"MCP Endpoint: {mcp_url}")
-            print()
-            print("Next Steps:")
-            print("1. Go to https://ai.azure.com")
-            print(f"2. Open project: {project_name}")
-            print("3. Find your agent in the Agents section")
-            print("4. Test it by uploading a document and asking questions!")
-            print("=" * 70)
             
-            # Save agent ID
-            with open('agent_id.txt', 'w') as f:
-                f.write(agent_data.get('id', ''))
-            
-            return 0
-        else:
-            print("API call failed")
-            print(f"Status: {response.status_code}")
-            print(f"Response Headers: {dict(response.headers)}")
-            print(f"Response Body: {response.text}")
+            print("Attempting agent creation with SDK...")
+            print("Agent configuration:")
+            print(json.dumps(agent_config, indent=2))
             print()
             
-            # Check if it's a permission error
-            if response.status_code == 401 and "PermissionDenied" in response.text:
-                print()
-                print("=" * 70)
-                print("PERMISSION ERROR - ACTION REQUIRED")
-                print("=" * 70)
-                print()
-                print("The GitHub Actions service principal needs the")
-                print("'Cognitive Services OpenAI Contributor' role.")
-                print()
-                print("To fix this, run the following command locally:")
-                print()
-                print("az role assignment create \\")
-                print("  --assignee b4d76bc7-7848-4345-8ff2-b0aa0a61d557 \\")
-                print("  --role 'Cognitive Services OpenAI Contributor' \\")
-                print(f"  --scope /subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.CognitiveServices/accounts/{project_name}")
-                print()
-                print("After running this command, re-run the GitHub Actions workflow.")
-                print("=" * 70)
-                print()
-                # Don't raise exception for permission errors - just warn
-                return 0
-            
-            raise Exception(f"Agent creation failed with status {response.status_code}: {response.text}")
+            agent = client.agents.create_agent(**agent_config)
+            print("Agent created successfully!")
+        
+        print()
+        print("=" * 70)
+        print("Agent Configuration Complete!")
+        print("=" * 70)
+        print(f"Agent ID: {agent.id}")
+        print(f"Agent Name: {agent.name if hasattr(agent, 'name') else agent_name}")
+        print(f"MCP Endpoint: {mcp_url}")
+        print()
+        print("Next Steps:")
+        print("1. Go to https://ai.azure.com")
+        print(f"2. Open project: {project_name}")
+        print("3. Find your agent in the Agents section")
+        print("4. Test it!")
+        print("=" * 70)
+        
+        # Save agent ID
+        with open('agent_id.txt', 'w') as f:
+            f.write(agent.id)
+        
+        return 0
             
     except Exception as e:
         import traceback
@@ -163,30 +151,23 @@ Be helpful, professional, and thorough in your analysis.""",
         traceback.print_exc()
         print()
         print("=" * 70)
-        print("Troubleshooting")
+        print("CREATE AGENT MANUALLY")
         print("=" * 70)
-        print("The azure-ai-projects Python SDK may not fully support agent")
-        print("creation for your project type yet.")
-        print()
-        print("Recommended approach: Create the agent manually")
         print()
         print("Your MCP server is deployed successfully at:")
         print(f"  {mcp_url}")
         print()
-        print("To create the agent manually:")
+        print("To create the agent in Azure AI Foundry portal:")
         print("1. Go to https://ai.azure.com")
-        print(f"2. Navigate to project: {project_name}")
-        print(f"3. Resource Group: {resource_group}")
-        print("4. Create a new agent:")
-        print(f"   - Name: {agent_name}")
-        print("   - Model: gpt-4o-mini")
-        print("   - Add MCP connection:")
-        print(f"     * URL: {mcp_url}")
-        print("     * Transport: sse")
-        print("5. Add these tools: list_documents, get_document, search_documents")
+        print(f"2. Navigate to project: {project_name} (Resource Group: {resource_group})")
+        print("3. Click 'Agents' -> '+ New Agent'")
+        print(f"4. Name: {agent_name}, Model: gpt-4o-mini")
+        print(f"5. Add MCP Server with URL: {mcp_url}")
+        print("6. Tools will auto-discover: list_documents, get_document, search_documents")
+        print("7. Save and test!")
         print("=" * 70)
         
-        # Don't fail the deployment - MCP server is deployed successfully
+        # Don't fail the deployment - MCP server is working
         return 0
 
 if __name__ == "__main__":
