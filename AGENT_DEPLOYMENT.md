@@ -16,13 +16,14 @@ The pipeline now includes:
 
 ## Required GitHub Secrets
 
-You need to add one new secret to your GitHub repository:
+You need to add these secrets to your GitHub repository:
 
-### New Secret Required:
+### Required Secrets:
 
-| Secret Name | Description | How to Get It |
-|-------------|-------------|---------------|
-| `AZURE_SUBSCRIPTION_ID` | Your Azure Subscription ID | Azure Portal → Subscriptions → Copy ID |
+| Secret Name | Description | How to Get It | Default Value |
+|-------------|-------------|---------------|---------------|
+| `AZURE_SUBSCRIPTION_ID` | Your Azure Subscription ID | Azure Portal → Subscriptions → Copy ID | *(required)* |
+| `AI_PROJECT_NAME` | Your Azure AI Foundry project name | Azure AI Foundry portal → Project name | `davidsr-ai-project-resourcev2` |
 
 ### Existing Secrets (already configured):
 
@@ -32,7 +33,7 @@ You need to add one new secret to your GitHub repository:
 | `FOUNDRY_ENDPOINT` | Azure AI Foundry GPT-4o-mini endpoint |
 | `FOUNDRY_API_KEY` | Azure AI Foundry API key |
 
-## How to Add AZURE_SUBSCRIPTION_ID Secret
+## How to Add Required Secrets
 
 ### Step 1: Get Your Subscription ID
 
@@ -47,24 +48,43 @@ You need to add one new secret to your GitHub repository:
 az account show --query id -o tsv
 ```
 
-### Step 2: Add to GitHub Secrets
+### Step 2: Get Your AI Project Name
+
+**Option A: Azure AI Foundry Portal**
+1. Go to https://ai.azure.com
+2. Click on your project
+3. Copy the project name from the top of the page
+
+**Option B: Azure CLI**
+```bash
+az ml workspace list --resource-group <your-resource-group> --query "[?kind=='project'].name" -o tsv
+```
+
+### Step 3: Add to GitHub Secrets
 
 1. Go to your GitHub repository: https://github.com/davisanc/ai-foundry-mcp-gateway
 2. Click **Settings** tab
 3. Click **Secrets and variables** → **Actions**
 4. Click **New repository secret**
+
+**For AZURE_SUBSCRIPTION_ID:**
 5. Name: `AZURE_SUBSCRIPTION_ID`
 6. Value: Paste your subscription ID
 7. Click **Add secret**
 
+**For AI_PROJECT_NAME (optional - defaults to `davidsr-ai-project-resourcev2`):**
+5. Name: `AI_PROJECT_NAME`
+6. Value: Paste your AI Foundry project name
+7. Click **Add secret**
+
+> **Note:** If you don't set `AI_PROJECT_NAME`, it will use the default project name `davidsr-ai-project-resourcev2`. Only add this secret if you want to use a different project.
+
 ## What the Pipeline Does
 
-### 1. Create AI Foundry Project
+### 1. Use Existing AI Foundry Project
 
-```bash
-az ml workspace create \
-  --name ai-foundry-mcp-project \
-  --resource-group ai-mcp-rg \
+The pipeline uses your existing Azure AI Foundry project (no new project creation needed).
+The project name is configured via the `AI_PROJECT_NAME` secret or defaults to `davidsr-ai-project-resourcev2`.
   --location westeurope \
   --kind project
 ```

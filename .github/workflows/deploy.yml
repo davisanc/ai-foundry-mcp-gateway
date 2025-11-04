@@ -13,7 +13,7 @@ env:
   APIM_NAME: mcp-apim-davisanc
   APIM_PUBLISHER_EMAIL: test@example.com
   APIM_PUBLISHER_NAME: "David Sanchez"
-  AI_PROJECT_NAME: ai-foundry-mcp-project
+  AI_PROJECT_NAME: ${{ secrets.AI_PROJECT_NAME || 'davidsr-ai-project-resourcev2' }}
   AI_AGENT_NAME: document-analysis-agent
 
 jobs:
@@ -117,27 +117,10 @@ jobs:
           --service-url "https://${WEBAPP_NAME}.azurewebsites.net"
 
     # -------------------------------
-    # Create Azure AI Foundry Project (if not exists)
+    # Use existing Azure AI Foundry Project
     # -------------------------------
-    - name: Check if AI Foundry Project exists
-      id: check_project
-      run: |
-        if az ml workspace show --name $AI_PROJECT_NAME --resource-group $AZURE_RESOURCE_GROUP 2>/dev/null; then
-          echo "exists=true" >> $GITHUB_OUTPUT
-        else
-          echo "exists=false" >> $GITHUB_OUTPUT
-        fi
-      continue-on-error: true
-
-    - name: Create AI Foundry Project
-      if: steps.check_project.outputs.exists == 'false'
-      run: |
-        az ml workspace create \
-          --name $AI_PROJECT_NAME \
-          --resource-group $AZURE_RESOURCE_GROUP \
-          --location $LOCATION \
-          --kind project
-      continue-on-error: true
+    # Note: Assumes you already have an Azure AI Foundry project created
+    # The project name should match the AI_PROJECT_NAME environment variable
 
     # -------------------------------
     # Create/Update Azure AI Agent with MCP
