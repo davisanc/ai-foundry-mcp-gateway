@@ -127,75 +127,55 @@ jobs:
     # -------------------------------
     - name: Install Azure AI Projects SDK
       run: |
-        pip install azure-ai-projects azure-identity
+        # Install the latest version of azure-ai-projects SDK
+        pip install --upgrade azure-ai-projects azure-identity
+        pip show azure-ai-projects
 
-    - name: Prepare Agent Configuration
+    - name: Get Project Connection Details
+      id: project_details
+      run: |
+        # Get the project details to construct the correct endpoint
+        PROJECT_JSON=$(az ml workspace show \
+          --name $AI_PROJECT_NAME \
+          --resource-group $AZURE_RESOURCE_GROUP \
+          --output json)
+        
+        # Extract the discovery URL which contains the AI services endpoint
+        DISCOVERY_URL=$(echo $PROJECT_JSON | jq -r '.discovery_url // empty')
+        
+        # Try to get workspace_id (this might be the AI services account)
+        WORKSPACE_ID=$(echo $PROJECT_JSON | jq -r '.workspace_id // empty')
+        
+        # Extract location
+        LOCATION=$(echo $PROJECT_JSON | jq -r '.location // empty')
+        
+        echo "Discovery URL: $DISCOVERY_URL"
+        echo "Workspace ID: $WORKSPACE_ID"
+        echo "Location: $LOCATION"
+        
+        # The correct endpoint format should be:
+        # https://<your-ai-services-account>.services.ai.azure.com/api/projects/<ProjectName>
+        # We'll try to construct this or use the discovery URL
+        
+        if [ -n "$DISCOVERY_URL" ]; then
+          # Extract the base domain from discovery URL
+          BASE_DOMAIN=$(echo $DISCOVERY_URL | sed -E 's|https://([^/]+).*|\1|')
+          # Construct the project endpoint
+          PROJECT_ENDPOINT="https://${BASE_DOMAIN}/api/projects/${AI_PROJECT_NAME}"
+        else
+          # Fallback to constructing from location
+          PROJECT_ENDPOINT="https://${LOCATION}.api.azureml.ms/api/projects/${AI_PROJECT_NAME}"
+        fi
+        
+        echo "project_endpoint=$PROJECT_ENDPOINT" >> $GITHUB_OUTPUT
+        echo "Constructed Project Endpoint: $PROJECT_ENDPOINT"
+
+    - name: Create or Update AI Agent
       env:
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        PROJECT_ENDPOINT: ${{ steps.project_details.outputs.project_endpoint }}
       run: |
-        python - <<'EOF'
-        import os
-        
-        # MCP server URL
-        mcp_url = f"https://{os.environ['WEBAPP_NAME']}.azurewebsites.net/mcp/sse"
-        
-        print(f"")
-        print(f"╔════════════════════════════════════════════════════════════════╗")
-        print(f"║  🚀 MCP Server Deployed Successfully!                         ║")
-        print(f"╚════════════════════════════════════════════════════════════════╝")
-        print(f"")
-        print(f"📍 MCP Endpoint: {mcp_url}")
-        print(f"")
-        print(f"⚠️  Note: Automated AI Agent creation is not supported via Python SDK yet.")
-        print(f"   Please create the agent manually in Azure AI Foundry portal.")
-        print(f"")
-        print(f"╔════════════════════════════════════════════════════════════════╗")
-        print(f"║  📖 Manual Agent Creation Steps                               ║")
-        print(f"╚════════════════════════════════════════════════════════════════╝")
-        print(f"")
-        print(f"1. Go to Azure AI Foundry: https://ai.azure.com")
-        print(f"")
-        print(f"2. Navigate to your project:")
-        print(f"   Project Name: {os.environ['AI_PROJECT_NAME']}")
-        print(f"   Resource Group: {os.environ['AZURE_RESOURCE_GROUP']}")
-        print(f"")
-        print(f"3. Create a new Agent with these settings:")
-        print(f"   ┌─────────────────────────────────────────────────────────┐")
-        print(f"   │ Name: {os.environ['AI_AGENT_NAME']:<44} │")
-        print(f"   │ Model: gpt-4o-mini                                      │")
-        print(f"   │ Description: AI agent for document analysis via MCP     │")
-        print(f"   └─────────────────────────────────────────────────────────┘")
-        print(f"")
-        print(f"4. Add MCP Connection:")
-        print(f"   ┌─────────────────────────────────────────────────────────┐")
-        print(f"   │ Type: Model Context Protocol (MCP)                     │")
-        print(f"   │ Transport: Server-Sent Events (SSE)                    │")
-        print(f"   │ URL: {mcp_url:<48} │")
-        print(f"   └─────────────────────────────────────────────────────────┘")
-        print(f"")
-        print(f"5. Set Agent Instructions:")
-        print(f"   ┌─────────────────────────────────────────────────────────┐")
-        print(f"   │ You are a helpful document analysis assistant with     │")
-        print(f"   │ access to uploaded documents via MCP tools.            │")
-        print(f"   │                                                         │")
-        print(f"   │ When users ask about documents:                        │")
-        print(f"   │ 1. Use list_documents to see available documents       │")
-        print(f"   │ 2. Use get_document to retrieve specific content       │")
-        print(f"   │ 3. Use search_documents to find information            │")
-        print(f"   │ 4. Provide clear, accurate answers                     │")
-        print(f"   │                                                         │")
-        print(f"   │ Always cite which document you're referencing.         │")
-        print(f"   └─────────────────────────────────────────────────────────┘")
-        print(f"")
-        print(f"6. Test the Agent:")
-        print(f"   - Upload a document at: https://{os.environ['WEBAPP_NAME']}.azurewebsites.net")
-        print(f"   - Note the session ID from the upload response")
-        print(f"   - In the agent chat, ask: 'List documents in session <session-id>'")
-        print(f"")
-        print(f"════════════════════════════════════════════════════════════════")
-        print(f"")
-        
-        EOF
+        python .github/scripts/create_agent.py
 
     - name: Display Agent Information
       if: success()
