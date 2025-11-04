@@ -1,19 +1,6 @@
 #!/usr/bin/env python3
 """
-Create or u        print("📡 Attempting to create agent via REST API...")
-        
-        # For Cognitive Services-based AI Foundry projects, the endpoint is:
-        # https://<resource-name>.services.ai.azure.com/
-        # Extract the resource name from project name
-        resource_name = project_name
-        
-        # Construct the correct AI Foundry API endpoint
-        foundry_endpoint = f"https://{resource_name}.services.ai.azure.com"
-        api_endpoint = f"{foundry_endpoint}/openai/assistants?api-version=2024-05-01-preview"
-        
-        print(f"   Foundry Endpoint: {foundry_endpoint}")
-        print(f"   API Endpoint: {api_endpoint}")
-        print()ent with MCP tools
+Create or update Azure AI Agent with MCP tools
 """
 import os
 import sys
@@ -23,7 +10,7 @@ from azure.identity import DefaultAzureCredential
 
 def get_access_token(credential):
     """Get Azure access token for AI services"""
-    token = credential.get_token("https://ml.azure.com/.default")
+    token = credential.get_token("https://cognitiveservices.azure.com/.default")
     return token.token
 
 def main():
@@ -36,10 +23,9 @@ def main():
     mcp_url = f"https://{os.environ['WEBAPP_NAME']}.azurewebsites.net/mcp/sse"
     
     print("=" * 70)
-    print("🔧 Azure AI Agent Creation (Direct REST API)")
+    print("Azure AI Agent Creation (Direct REST API)")
     print("=" * 70)
     print(f"Project Name: {project_name}")
-    print(f"Project Endpoint: {project_endpoint}")
     print(f"Resource Group: {resource_group}")
     print(f"MCP URL: {mcp_url}")
     print()
@@ -48,25 +34,23 @@ def main():
     credential = DefaultAzureCredential()
     
     try:
-        print("� Getting Azure access token...")
+        print("Getting Azure access token...")
         access_token = get_access_token(credential)
-        print("✅ Got access token")
+        print("Got access token")
         print()
         
-        # Try to use the Azure AI Agents REST API directly
-        # The endpoint should be the AI services endpoint, not the project endpoint
-        # Format: https://<region>.api.azureml.ms or https://<ai-service>.cognitiveservices.azure.com
+        print("Attempting to create agent via REST API...")
         
-        print("📡 Attempting to create agent via REST API...")
+        # For Cognitive Services-based AI Foundry projects, the endpoint is:
+        # https://<resource-name>.services.ai.azure.com/
+        resource_name = project_name
         
-        # Construct the agent API endpoint
-        # For Cognitive Services accounts, the endpoint is different
-        base_url = project_endpoint.replace("/subscriptions/", "/").split("/subscriptions/")[0]
+        # Construct the correct AI Foundry API endpoint
+        foundry_endpoint = f"https://{resource_name}.services.ai.azure.com"
+        api_endpoint = f"{foundry_endpoint}/openai/assistants?api-version=2024-05-01-preview"
         
-        # Try Azure OpenAI Assistants API format (which Azure AI Foundry uses)
-        api_endpoint = f"{base_url}/openai/assistants?api-version=2024-05-01-preview"
-        
-        print(f"   API Endpoint: {api_endpoint}")
+        print(f"Foundry Endpoint: {foundry_endpoint}")
+        print(f"API Endpoint: {api_endpoint}")
         print()
         
         # Agent configuration
@@ -101,19 +85,20 @@ Be helpful, professional, and thorough in your analysis.""",
         
         headers = {
             "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "api-key": access_token  # Some endpoints need this header instead
         }
         
+        print("Sending POST request to create agent...")
         response = requests.post(api_endpoint, headers=headers, json=agent_payload, timeout=30)
         
         print(f"Response Status: {response.status_code}")
-        print(f"Response Headers: {dict(response.headers)}")
         print()
         
         if response.status_code in [200, 201]:
             agent_data = response.json()
             print("=" * 70)
-            print("🎉 Agent Created Successfully!")
+            print("Agent Created Successfully!")
             print("=" * 70)
             print(f"Agent ID: {agent_data.get('id', 'N/A')}")
             print(f"Agent Name: {agent_data.get('name', agent_name)}")
@@ -132,17 +117,18 @@ Be helpful, professional, and thorough in your analysis.""",
             
             return 0
         else:
-            print("⚠️  API call failed")
+            print("API call failed")
             print(f"Status: {response.status_code}")
-            print(f"Response: {response.text}")
+            print(f"Response Headers: {dict(response.headers)}")
+            print(f"Response Body: {response.text}")
             print()
-            raise Exception(f"Agent creation failed with status {response.status_code}")
+            raise Exception(f"Agent creation failed with status {response.status_code}: {response.text}")
             
     except Exception as e:
         import traceback
         print()
         print("=" * 70)
-        print("⚠️  Agent Creation Failed")
+        print("Agent Creation Failed")
         print("=" * 70)
         print(f"Error Type: {type(e).__name__}")
         print(f"Error Message: {str(e)}")
@@ -151,7 +137,7 @@ Be helpful, professional, and thorough in your analysis.""",
         traceback.print_exc()
         print()
         print("=" * 70)
-        print("📋 Troubleshooting")
+        print("Troubleshooting")
         print("=" * 70)
         print("The azure-ai-projects Python SDK may not fully support agent")
         print("creation for your project type yet.")
