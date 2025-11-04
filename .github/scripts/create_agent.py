@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 """
-Create or update Azure AI Agent with MCP tools
+Create or u        print("📡 Attempting to create agent via REST API...")
+        
+        # For Cognitive Services-based AI Foundry projects, the endpoint is:
+        # https://<resource-name>.services.ai.azure.com/
+        # Extract the resource name from project name
+        resource_name = project_name
+        
+        # Construct the correct AI Foundry API endpoint
+        foundry_endpoint = f"https://{resource_name}.services.ai.azure.com"
+        api_endpoint = f"{foundry_endpoint}/openai/assistants?api-version=2024-05-01-preview"
+        
+        print(f"   Foundry Endpoint: {foundry_endpoint}")
+        print(f"   API Endpoint: {api_endpoint}")
+        print()ent with MCP tools
 """
 import os
 import sys
