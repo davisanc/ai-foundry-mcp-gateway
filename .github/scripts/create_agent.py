@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Create or update Azure AI Agent with MCP tools using Azure AI Projects SDK
+Create or update Azure AI Agent with MCP tools
+Uses Azure AI Projects SDK with correct AI Foundry endpoint
 """
 import os
 import sys
 import json
 from azure.ai.projects import AIProjectClient
-from azure.ai.projects.models import ConnectionType
 from azure.identity import DefaultAzureCredential
 
 def main():
@@ -24,54 +24,35 @@ def main():
     print(f"Project Name: {project_name}")
     print(f"Resource Group: {resource_group}")
     print(f"MCP URL: {mcp_url}")
-    
-    # Import and print SDK version
-    import azure.ai.projects
-    print(f"SDK Version: {azure.ai.projects.__version__}")
+    print(f"Project Endpoint: {project_endpoint}")
     print()
     
     # Initialize credential
     credential = DefaultAzureCredential()
     
     try:
-        print("Connecting to Azure AI Project...")
-        
-        # Try connection string format for AI Foundry projects
-        # Format: <HostName>;<AzureSubscriptionId>;<ResourceGroup>;<ProjectName>
-        connection_string = f"{project_endpoint};{subscription_id};{resource_group};{project_name}"
-        
-        print(f"Project Endpoint: {project_endpoint}")
-        print(f"Connection String Format: <endpoint>;<subscription>;<rg>;<project>")
+        print("Initializing Azure AI Project Client...")
+        print(f"Using endpoint: {project_endpoint}")
         print()
         
-        # Initialize the AI Project Client with connection string
-        try:
-            client = AIProjectClient.from_connection_string(
-                conn_str=connection_string,
-                credential=credential
-            )
-            print("Successfully connected to AI Project (connection string)!")
-        except Exception as conn_err:
-            print(f"Connection string failed: {conn_err}")
-            print("Trying direct endpoint initialization...")
-            # Fallback: try direct initialization
-            client = AIProjectClient(
-                endpoint=project_endpoint,
-                credential=credential,
-                subscription_id=subscription_id,
-                resource_group_name=resource_group,
-                project_name=project_name
-            )
-            print("Successfully connected to AI Project (direct endpoint)!")
+        # Initialize AIProjectClient with the correct AI Foundry endpoint
+        # The endpoint should be: https://<project-name>.services.ai.azure.com
+        client = AIProjectClient(
+            endpoint=project_endpoint,
+            credential=credential,
+            subscription_id=subscription_id,
+            resource_group_name=resource_group,
+            project_name=project_name
+        )
         
+        print("Successfully connected to AI Project!")
         print()
         
-        # Create new agent with MCP tools using SDK
-        # Skip listing agents to avoid 404 errors with Cognitive Services projects
+        # Create new agent with MCP tools
         print(f"Creating agent: {agent_name}...")
         print()
         
-        # Try different MCP tool formats that the SDK might support
+        # Agent configuration for SDK
         agent_config = {
             "model": "gpt-4o-mini",
             "name": agent_name,
@@ -89,10 +70,8 @@ Be helpful, professional, and thorough in your analysis.""",
             "tools": [
                 {
                     "type": "mcp_server",
-                    "mcp_server": {
-                        "server_label": "document_mcp_server",
-                        "server_url": mcp_url
-                    }
+                    "server_label": "document_mcp_server",
+                    "server_url": mcp_url
                 }
             ]
         }
@@ -102,6 +81,7 @@ Be helpful, professional, and thorough in your analysis.""",
         print(json.dumps(agent_config, indent=2))
         print()
         
+        # Create agent using SDK
         agent = client.agents.create_agent(**agent_config)
         print("Agent created successfully!")
         
@@ -110,7 +90,7 @@ Be helpful, professional, and thorough in your analysis.""",
         print("Agent Configuration Complete!")
         print("=" * 70)
         print(f"Agent ID: {agent.id}")
-        print(f"Agent Name: {agent.name if hasattr(agent, 'name') else agent_name}")
+        print(f"Agent Name: {getattr(agent, 'name', agent_name)}")
         print(f"MCP Endpoint: {mcp_url}")
         print()
         print("Next Steps:")
