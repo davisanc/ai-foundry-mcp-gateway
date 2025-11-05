@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 """
 Create or update Azure AI Agent with MCP tools
-Uses Azure AI Projects SDK with McpTool class
+Uses Azure AI Projects SDK - attempting to find correct MCP imports
 """
 import os
 import sys
 import json
 from azure.ai.projects import AIProjectClient
-from azure.ai.agents.models import McpTool
 from azure.identity import DefaultAzureCredential
+
+# Try to import MCP-related classes
+try:
+    from azure.ai.agents.models import McpTool
+    print("✅ McpTool imported from azure.ai.agents.models")
+except ImportError:
+    try:
+        from azure.ai.projects.models import McpTool
+        print("✅ McpTool imported from azure.ai.projects.models")
+    except ImportError:
+        print("⚠️  McpTool not found in SDK, will use manual configuration")
+        McpTool = None
 
 def main():
     # Get configuration from environment
@@ -46,16 +57,32 @@ def main():
         print("✅ Connected to AI Project!")
         print()
         
-        # Create MCP tool using the SDK's McpTool class
+        # Create MCP tool configuration
         print(f"Creating MCP tool configuration...")
-        mcp_tool = McpTool(
-            server_label="document_mcp_server",
-            server_url=mcp_url,
-            allowed_tools=[]  # Empty list means allow all tools
-        )
         
-        print(f"MCP Server Label: {mcp_tool.server_label}")
-        print(f"MCP Server URL: {mcp_tool.server_url}")
+        if McpTool is not None:
+            # Use SDK's McpTool class if available
+            print("Using McpTool class from SDK")
+            mcp_tool = McpTool(
+                server_label="document_mcp_server",
+                server_url=mcp_url,
+                allowed_tools=[]  # Empty list means allow all tools
+            )
+            tool_definitions = mcp_tool.definitions
+        else:
+            # Fallback: manually construct MCP tool definition
+            print("McpTool class not available, using manual configuration")
+            tool_definitions = [{
+                "type": "mcp",
+                "mcp": {
+                    "server_label": "document_mcp_server",
+                    "server_url": mcp_url
+                }
+            }]
+        
+        print(f"MCP Server Label: document_mcp_server")
+        print(f"MCP Server URL: {mcp_url}")
+        print(f"Tool definitions: {json.dumps(tool_definitions, indent=2)}")
         print()
         
         # Create agent with MCP tool
@@ -77,7 +104,7 @@ When users ask about documents:
 
 Always cite which document you're referencing in your answers.
 Be helpful, professional, and thorough in your analysis.""",
-                tools=mcp_tool.definitions,
+                tools=tool_definitions,
             )
             
             print("✅ Agent created successfully!")
@@ -89,12 +116,13 @@ Be helpful, professional, and thorough in your analysis.""",
             print(f"Agent ID: {agent.id}")
             print(f"Agent Name: {agent.name}")
             print(f"Model: {agent.model}")
-            print(f"MCP Server: {mcp_tool.server_label}")
-            print(f"MCP Endpoint: {mcp_tool.server_url}")
+            print(f"MCP Server: document_mcp_server")
+            print(f"MCP Endpoint: {mcp_url}")
             print()
-            print("Available MCP Tools (auto-discovered):")
-            for tool_def in mcp_tool.definitions:
-                print(f"  • {tool_def.get('function', {}).get('name', 'unknown')}")
+            if hasattr(agent, 'tools') and agent.tools:
+                print("Agent Tools:")
+                for tool in agent.tools:
+                    print(f"  • {tool}")
             print()
             print("Next Steps:")
             print("1. Go to https://ai.azure.com")
