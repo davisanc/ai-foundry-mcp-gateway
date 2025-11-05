@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 Create or update Azure AI Agent with MCP tools
-Uses Azure AI Projects SDK with correct AI Foundry endpoint
+Uses OpenAI-compatible REST API with Azure AI Foundry endpoint
 """
 import os
 import sys
 import json
-from azure.ai.projects import AIProjectClient
+import requests
 from azure.identity import DefaultAzureCredential
 
 def main():
@@ -19,7 +19,7 @@ def main():
     mcp_url = f"https://{os.environ['WEBAPP_NAME']}.azurewebsites.net/mcp/sse"
     
     print("=" * 70)
-    print("Azure AI Agent Creation (Azure AI Projects SDK)")
+    print("Azure AI Agent Creation (OpenAI REST API)")
     print("=" * 70)
     print(f"Project Name: {project_name}")
     print(f"Resource Group: {resource_group}")
@@ -27,32 +27,33 @@ def main():
     print(f"Project Endpoint: {project_endpoint}")
     print()
     
-    # Initialize credential
+    # Initialize credential and get access token
     credential = DefaultAzureCredential()
     
+    # Get token for Cognitive Services
+    print("Getting access token...")
+    token = credential.get_token("https://cognitiveservices.azure.com/.default")
+    
+    headers = {
+        "Authorization": f"Bearer {token.token}",
+        "Content-Type": "application/json",
+        "api-key": os.environ.get('FOUNDRY_API_KEY', '')  # Try API key as fallback
+    }
+    
     try:
-        print("Initializing Azure AI Project Client...")
-        print(f"Using endpoint: {project_endpoint}")
-        print()
+        # Construct the OpenAI assistants API endpoint
+        # For Cognitive Services: https://<resource-name>.cognitiveservices.azure.com/openai/assistants
+        # Expected format: https://davidsr-ai-project-resourcev2.cognitiveservices.azure.com/openai/assistants
+        api_endpoint = f"{project_endpoint.rstrip('/')}/openai/assistants?api-version=2024-05-01-preview"
         
-        # Initialize AIProjectClient with the correct AI Foundry endpoint
-        # The endpoint should be: https://<project-name>.services.ai.azure.com
-        client = AIProjectClient(
-            endpoint=project_endpoint,
-            credential=credential,
-            subscription_id=subscription_id,
-            resource_group_name=resource_group,
-            project_name=project_name
-        )
-        
-        print("Successfully connected to AI Project!")
+        print(f"API Endpoint: {api_endpoint}")
         print()
         
         # Create new agent with MCP tools
         print(f"Creating agent: {agent_name}...")
         print()
         
-        # Agent configuration for SDK
+        # Agent configuration for OpenAI API
         agent_config = {
             "model": "gpt-4o-mini",
             "name": agent_name,
@@ -76,21 +77,47 @@ Be helpful, professional, and thorough in your analysis.""",
             ]
         }
         
-        print("Attempting agent creation with SDK...")
+        print("Attempting agent creation via OpenAI API...")
         print("Agent configuration:")
         print(json.dumps(agent_config, indent=2))
         print()
         
-        # Create agent using SDK
-        agent = client.agents.create_agent(**agent_config)
-        print("Agent created successfully!")
+        # Make POST request to create assistant
+        response = requests.post(api_endpoint, headers=headers, json=agent_config, timeout=30)
+        
+        print(f"Response Status: {response.status_code}")
+        
+        if response.status_code in [200, 201]:
+            agent = response.json()
+            print("✅ Agent created successfully!")
+        else:
+            # Handle error
+            print(f"❌ Failed to create agent: {response.status_code}")
+            print(f"Response: {response.text}")
+            
+            try:
+                error_data = response.json()
+                error_msg = error_data.get('error', {}).get('message', str(error_data))
+                error_type = error_data.get('error', {}).get('type', 'unknown')
+                
+                # Check for known limitation
+                if 'mcp' in error_msg.lower() or 'enterprise' in error_msg.lower():
+                    print()
+                    print("⚠️  MCP tools require Enterprise offering")
+                    print("   Standard API doesn't support MCP tools yet")
+                    raise Exception(f"MCP tools not supported: {error_msg}")
+                else:
+                    raise Exception(f"API Error ({response.status_code}): {error_type} - {error_msg}")
+            except json.JSONDecodeError:
+                raise Exception(f"API Error ({response.status_code}): {response.text}")
         
         print()
         print("=" * 70)
         print("Agent Configuration Complete!")
         print("=" * 70)
-        print(f"Agent ID: {agent.id}")
-        print(f"Agent Name: {getattr(agent, 'name', agent_name)}")
+        print(f"Agent ID: {agent.get('id', 'unknown')}")
+        print(f"Agent Name: {agent.get('name', agent_name)}")
+        print(f"Model: {agent.get('model', 'gpt-4o-mini')}")
         print(f"MCP Endpoint: {mcp_url}")
         print()
         print("Next Steps:")
@@ -101,8 +128,10 @@ Be helpful, professional, and thorough in your analysis.""",
         print("=" * 70)
         
         # Save agent ID
-        with open('agent_id.txt', 'w') as f:
-            f.write(agent.id)
+        agent_id = agent.get('id', '')
+        if agent_id:
+            with open('agent_id.txt', 'w') as f:
+                f.write(agent_id)
         
         return 0
             

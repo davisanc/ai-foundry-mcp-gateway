@@ -20,17 +20,17 @@ if [ -n "$RESOURCE_ID" ]; then
   echo "  Resource ID: $RESOURCE_ID"
   echo "  Location: $LOCATION"
   
-  # Try to get discovery URL from properties
-  DISCOVERY_URL=$(echo "$PROJECT_JSON" | jq -r '.properties.endpoint // empty')
+  # Try to get the endpoint from properties
+  PROPERTIES_ENDPOINT=$(echo "$PROJECT_JSON" | jq -r '.properties.endpoint // empty')
   
-  if [ -n "$DISCOVERY_URL" ]; then
-    # Use the discovery URL from the resource
-    PROJECT_ENDPOINT="$DISCOVERY_URL"
-    echo "Using discovery endpoint: $PROJECT_ENDPOINT"
+  if [ -n "$PROPERTIES_ENDPOINT" ]; then
+    # Use the endpoint from the resource properties
+    PROJECT_ENDPOINT="$PROPERTIES_ENDPOINT"
+    echo "Using properties endpoint: $PROJECT_ENDPOINT"
   else
-    # Fallback: construct Azure AI Foundry endpoint
-    # Format: https://<project-name>.services.ai.azure.com
-    PROJECT_ENDPOINT="https://${AI_PROJECT_NAME}.services.ai.azure.com"
+    # Construct Cognitive Services endpoint format
+    # Format: https://<project-name>.cognitiveservices.azure.com/
+    PROJECT_ENDPOINT="https://${AI_PROJECT_NAME}.cognitiveservices.azure.com"
     echo "Using constructed endpoint: $PROJECT_ENDPOINT"
   fi
   
