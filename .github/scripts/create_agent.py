@@ -36,59 +36,47 @@ def main():
     try:
         print("Connecting to Azure AI Project...")
         
-        # For Cognitive Services-based projects, use the services.ai.azure.com endpoint
-        foundry_endpoint = f"https://{project_name}.services.ai.azure.com"
+        # Try connection string format for AI Foundry projects
+        # Format: <HostName>;<AzureSubscriptionId>;<ResourceGroup>;<ProjectName>
+        connection_string = f"{project_endpoint};{subscription_id};{resource_group};{project_name}"
         
-        print(f"Foundry Endpoint: {foundry_endpoint}")
+        print(f"Project Endpoint: {project_endpoint}")
+        print(f"Connection String Format: <endpoint>;<subscription>;<rg>;<project>")
         print()
         
-        # Initialize the AI Project Client
-        client = AIProjectClient(
-            endpoint=foundry_endpoint,
-            credential=credential,
-            subscription_id=subscription_id,
-            resource_group_name=resource_group,
-            project_name=project_name
-        )
-        
-        print("Successfully connected to AI Project!")
-        print()
-        
-        # Check for existing agents
-        print("Checking for existing agents...")
+        # Initialize the AI Project Client with connection string
         try:
-            existing_agents = list(client.agents.list_agents())
-            print(f"Found {len(existing_agents)} existing agent(s)")
-            
-            existing_agent = None
-            for agent in existing_agents:
-                if hasattr(agent, 'name') and agent.name == agent_name:
-                    existing_agent = agent
-                    print(f"Agent '{agent_name}' already exists (ID: {agent.id})")
-                    break
-            
-            print()
-            
-        except Exception as list_error:
-            print(f"Could not list agents: {list_error}")
-            print("Continuing with creation attempt...")
-            print()
-            existing_agent = None
+            client = AIProjectClient.from_connection_string(
+                conn_str=connection_string,
+                credential=credential
+            )
+            print("Successfully connected to AI Project (connection string)!")
+        except Exception as conn_err:
+            print(f"Connection string failed: {conn_err}")
+            print("Trying direct endpoint initialization...")
+            # Fallback: try direct initialization
+            client = AIProjectClient(
+                endpoint=project_endpoint,
+                credential=credential,
+                subscription_id=subscription_id,
+                resource_group_name=resource_group,
+                project_name=project_name
+            )
+            print("Successfully connected to AI Project (direct endpoint)!")
         
-        if existing_agent:
-            print(f"Using existing agent: {existing_agent.id}")
-            agent = existing_agent
-        else:
-            # Create new agent with MCP tools using SDK
-            print(f"Creating new agent: {agent_name}...")
-            print()
-            
-            # Try different MCP tool formats that the SDK might support
-            agent_config = {
-                "model": "gpt-4o-mini",
-                "name": agent_name,
-                "description": "AI agent that analyzes documents using MCP gateway",
-                "instructions": """You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
+        print()
+        
+        # Create new agent with MCP tools using SDK
+        # Skip listing agents to avoid 404 errors with Cognitive Services projects
+        print(f"Creating agent: {agent_name}...")
+        print()
+        
+        # Try different MCP tool formats that the SDK might support
+        agent_config = {
+            "model": "gpt-4o-mini",
+            "name": agent_name,
+            "description": "AI agent that analyzes documents using MCP gateway",
+            "instructions": """You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
 
 When users ask about documents:
 1. Use list_documents to see available documents in their session
@@ -98,24 +86,24 @@ When users ask about documents:
 
 Always cite which document you're referencing in your answers.
 Be helpful, professional, and thorough in your analysis.""",
-                "tools": [
-                    {
-                        "type": "mcp_server",
-                        "mcp_server": {
-                            "server_label": "document_mcp_server",
-                            "server_url": mcp_url
-                        }
+            "tools": [
+                {
+                    "type": "mcp_server",
+                    "mcp_server": {
+                        "server_label": "document_mcp_server",
+                        "server_url": mcp_url
                     }
-                ]
-            }
-            
-            print("Attempting agent creation with SDK...")
-            print("Agent configuration:")
-            print(json.dumps(agent_config, indent=2))
-            print()
-            
-            agent = client.agents.create_agent(**agent_config)
-            print("Agent created successfully!")
+                }
+            ]
+        }
+        
+        print("Attempting agent creation with SDK...")
+        print("Agent configuration:")
+        print(json.dumps(agent_config, indent=2))
+        print()
+        
+        agent = client.agents.create_agent(**agent_config)
+        print("Agent created successfully!")
         
         print()
         print("=" * 70)
