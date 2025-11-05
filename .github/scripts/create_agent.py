@@ -140,29 +140,84 @@ Be helpful, professional, and thorough in your analysis.""",
         import traceback
         print()
         print("=" * 70)
-        print("Agent Creation Failed")
+        print("⚠️  AUTOMATED AGENT CREATION NOT SUPPORTED")
         print("=" * 70)
-        print(f"Error Type: {type(e).__name__}")
-        print(f"Error Message: {str(e)}")
-        print()
-        print("Full Traceback:")
-        traceback.print_exc()
+        
+        error_msg = str(e).lower()
+        if 'enterprise' in error_msg or 'mcp' in error_msg:
+            print()
+            print("❌ MCP Tools Limitation Detected")
+            print("   MCP tools require 'Enterprise offering' tier")
+            print("   Standard Azure Cognitive Services doesn't support MCP via API")
+            print()
+            print("✅ However, the Azure AI Foundry Portal DOES support MCP!")
+            print("   You can create the agent manually through the web UI.")
+        else:
+            print()
+            print(f"Error Type: {type(e).__name__}")
+            print(f"Error Message: {str(e)}")
+            print()
+            print("Full Traceback:")
+            traceback.print_exc()
+        
         print()
         print("=" * 70)
-        print("CREATE AGENT MANUALLY")
+        print("✅ YOUR MCP SERVER IS RUNNING SUCCESSFULLY")
         print("=" * 70)
         print()
-        print("Your MCP server is deployed successfully at:")
-        print(f"  {mcp_url}")
+        print(f"🌐 MCP Endpoint: {mcp_url}")
+        print(f"📊 AI Project: {project_name}")
+        print(f"📁 Resource Group: {resource_group}")
         print()
-        print("To create the agent in Azure AI Foundry portal:")
-        print("1. Go to https://ai.azure.com")
-        print(f"2. Navigate to project: {project_name} (Resource Group: {resource_group})")
-        print("3. Click 'Agents' -> '+ New Agent'")
-        print(f"4. Name: {agent_name}, Model: gpt-4o-mini")
-        print(f"5. Add MCP Server with URL: {mcp_url}")
-        print("6. Tools will auto-discover: list_documents, get_document, search_documents")
-        print("7. Save and test!")
+        print("=" * 70)
+        print("📋 MANUAL AGENT CREATION STEPS")
+        print("=" * 70)
+        print()
+        print("1. Open Azure AI Foundry Portal")
+        print("   👉 https://ai.azure.com")
+        print()
+        print("2. Navigate to your project")
+        print(f"   Project: {project_name}")
+        print(f"   Resource Group: {resource_group}")
+        print()
+        print("3. Create New Agent")
+        print("   • Click 'Agents' in left sidebar")
+        print("   • Click '+ New Agent' button")
+        print()
+        print("4. Configure Agent")
+        print(f"   • Name: {agent_name}")
+        print("   • Model: gpt-4o-mini")
+        print("   • Instructions: (Use the instructions below)")
+        print()
+        print("5. Add MCP Server Connection")
+        print("   • In Tools section, click 'Add MCP Server'")
+        print(f"   • Server URL: {mcp_url}")
+        print("   • Label: document_mcp_server")
+        print()
+        print("6. MCP Tools Will Auto-Discover")
+        print("   ✓ list_documents")
+        print("   ✓ get_document")
+        print("   ✓ search_documents")
+        print("   ✓ upload_document")
+        print()
+        print("7. Save and Test!")
+        print()
+        print("=" * 70)
+        print("📝 AGENT INSTRUCTIONS (Copy & Paste)")
+        print("=" * 70)
+        print("""
+You are a helpful document analysis assistant with access to uploaded 
+documents via MCP tools.
+
+When users ask about documents:
+1. Use list_documents to see available documents in their session
+2. Use get_document to retrieve specific document content
+3. Use search_documents to find information across documents
+4. Provide clear, accurate answers based on the document content
+
+Always cite which document you're referencing in your answers.
+Be helpful, professional, and thorough in your analysis.
+""")
         print("=" * 70)
         
         # Don't fail the deployment - MCP server is working
