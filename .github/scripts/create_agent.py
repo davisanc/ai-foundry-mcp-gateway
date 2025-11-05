@@ -54,6 +54,7 @@ def main():
         print()
         
         # Agent configuration for OpenAI API
+        # Based on API error, the correct type is "mcp" not "mcp_server"
         agent_config = {
             "model": "gpt-4o-mini",
             "name": agent_name,
@@ -70,7 +71,7 @@ Always cite which document you're referencing in your answers.
 Be helpful, professional, and thorough in your analysis.""",
             "tools": [
                 {
-                    "type": "mcp_server",
+                    "type": "mcp",
                     "server_label": "document_mcp_server",
                     "server_url": mcp_url
                 }
