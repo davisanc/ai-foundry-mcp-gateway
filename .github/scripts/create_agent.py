@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 Create or update Azure AI Agent with MCP tools
-Uses OpenAI-compatible REST API with Azure AI Foundry endpoint
+Uses Azure AI Projects SDK with McpTool class
 """
 import os
 import sys
 import json
-import requests
+from azure.ai.projects import AIProjectClient
+from azure.ai.agents.models import McpTool
 from azure.identity import DefaultAzureCredential
 
 def main():
@@ -19,7 +20,7 @@ def main():
     mcp_url = f"https://{os.environ['WEBAPP_NAME']}.azurewebsites.net/mcp/sse"
     
     print("=" * 70)
-    print("Azure AI Agent Creation (OpenAI REST API)")
+    print("Azure AI Agent Creation (Azure AI Projects SDK)")
     print("=" * 70)
     print(f"Project Name: {project_name}")
     print(f"Resource Group: {resource_group}")
@@ -27,39 +28,46 @@ def main():
     print(f"Project Endpoint: {project_endpoint}")
     print()
     
-    # Initialize credential and get access token
+    # Initialize credential
     credential = DefaultAzureCredential()
     
-    # Get token for Cognitive Services
-    print("Getting access token...")
-    token = credential.get_token("https://cognitiveservices.azure.com/.default")
-    
-    headers = {
-        "Authorization": f"Bearer {token.token}",
-        "Content-Type": "application/json",
-        "api-key": os.environ.get('FOUNDRY_API_KEY', '')  # Try API key as fallback
-    }
-    
     try:
-        # Construct the OpenAI assistants API endpoint
-        # For Cognitive Services: https://<resource-name>.cognitiveservices.azure.com/openai/assistants
-        # Expected format: https://davidsr-ai-project-resourcev2.cognitiveservices.azure.com/openai/assistants
-        api_endpoint = f"{project_endpoint.rstrip('/')}/openai/assistants?api-version=2024-05-01-preview"
+        print("Initializing Azure AI Project Client...")
         
-        print(f"API Endpoint: {api_endpoint}")
+        # Initialize AIProjectClient with the endpoint
+        project_client = AIProjectClient(
+            endpoint=project_endpoint,
+            credential=credential,
+            subscription_id=subscription_id,
+            resource_group_name=resource_group,
+            project_name=project_name
+        )
+        
+        print("✅ Connected to AI Project!")
         print()
         
-        # Create new agent with MCP tools
+        # Create MCP tool using the SDK's McpTool class
+        print(f"Creating MCP tool configuration...")
+        mcp_tool = McpTool(
+            server_label="document_mcp_server",
+            server_url=mcp_url,
+            allowed_tools=[]  # Empty list means allow all tools
+        )
+        
+        print(f"MCP Server Label: {mcp_tool.server_label}")
+        print(f"MCP Server URL: {mcp_tool.server_url}")
+        print()
+        
+        # Create agent with MCP tool
         print(f"Creating agent: {agent_name}...")
-        print()
         
-        # Agent configuration for OpenAI API
-        # Based on API error, the correct type is "mcp" not "mcp_server"
-        agent_config = {
-            "model": "gpt-4o-mini",
-            "name": agent_name,
-            "description": "AI agent that analyzes documents using MCP gateway",
-            "instructions": """You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
+        with project_client:
+            agents_client = project_client.agents
+            
+            agent = agents_client.create_agent(
+                model="gpt-4o-mini",
+                name=agent_name,
+                instructions="""You are a helpful document analysis assistant with access to uploaded documents via MCP tools.
 
 When users ask about documents:
 1. Use list_documents to see available documents in their session
@@ -69,72 +77,37 @@ When users ask about documents:
 
 Always cite which document you're referencing in your answers.
 Be helpful, professional, and thorough in your analysis.""",
-            "tools": [
-                {
-                    "type": "mcp",
-                    "server_label": "document_mcp_server",
-                    "server_url": mcp_url
-                }
-            ]
-        }
-        
-        print("Attempting agent creation via OpenAI API...")
-        print("Agent configuration:")
-        print(json.dumps(agent_config, indent=2))
-        print()
-        
-        # Make POST request to create assistant
-        response = requests.post(api_endpoint, headers=headers, json=agent_config, timeout=30)
-        
-        print(f"Response Status: {response.status_code}")
-        
-        if response.status_code in [200, 201]:
-            agent = response.json()
-            print("✅ Agent created successfully!")
-        else:
-            # Handle error
-            print(f"❌ Failed to create agent: {response.status_code}")
-            print(f"Response: {response.text}")
+                tools=mcp_tool.definitions,
+            )
             
-            try:
-                error_data = response.json()
-                error_msg = error_data.get('error', {}).get('message', str(error_data))
-                error_type = error_data.get('error', {}).get('type', 'unknown')
-                
-                # Check for known limitation
-                if 'mcp' in error_msg.lower() or 'enterprise' in error_msg.lower():
-                    print()
-                    print("⚠️  MCP tools require Enterprise offering")
-                    print("   Standard API doesn't support MCP tools yet")
-                    raise Exception(f"MCP tools not supported: {error_msg}")
-                else:
-                    raise Exception(f"API Error ({response.status_code}): {error_type} - {error_msg}")
-            except json.JSONDecodeError:
-                raise Exception(f"API Error ({response.status_code}): {response.text}")
-        
-        print()
-        print("=" * 70)
-        print("Agent Configuration Complete!")
-        print("=" * 70)
-        print(f"Agent ID: {agent.get('id', 'unknown')}")
-        print(f"Agent Name: {agent.get('name', agent_name)}")
-        print(f"Model: {agent.get('model', 'gpt-4o-mini')}")
-        print(f"MCP Endpoint: {mcp_url}")
-        print()
-        print("Next Steps:")
-        print("1. Go to https://ai.azure.com")
-        print(f"2. Open project: {project_name}")
-        print("3. Find your agent in the Agents section")
-        print("4. Test it!")
-        print("=" * 70)
-        
-        # Save agent ID
-        agent_id = agent.get('id', '')
-        if agent_id:
+            print("✅ Agent created successfully!")
+            print()
+            
+            print("=" * 70)
+            print("Agent Configuration Complete!")
+            print("=" * 70)
+            print(f"Agent ID: {agent.id}")
+            print(f"Agent Name: {agent.name}")
+            print(f"Model: {agent.model}")
+            print(f"MCP Server: {mcp_tool.server_label}")
+            print(f"MCP Endpoint: {mcp_tool.server_url}")
+            print()
+            print("Available MCP Tools (auto-discovered):")
+            for tool_def in mcp_tool.definitions:
+                print(f"  • {tool_def.get('function', {}).get('name', 'unknown')}")
+            print()
+            print("Next Steps:")
+            print("1. Go to https://ai.azure.com")
+            print(f"2. Open project: {project_name}")
+            print("3. Find your agent in the Agents section")
+            print("4. Test it with document queries!")
+            print("=" * 70)
+            
+            # Save agent ID
             with open('agent_id.txt', 'w') as f:
-                f.write(agent_id)
-        
-        return 0
+                f.write(agent.id)
+            
+            return 0
             
     except Exception as e:
         import traceback

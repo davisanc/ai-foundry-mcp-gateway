@@ -128,9 +128,9 @@ jobs:
     # -------------------------------
     - name: Install Azure AI Projects SDK
       run: |
-        # Install the latest version of azure-ai-projects SDK
-        pip install --upgrade azure-ai-projects azure-identity requests
-        pip show azure-ai-projects
+        # Install the latest version of azure-ai-projects and azure-ai-agents SDKs
+        pip install --upgrade azure-ai-projects azure-ai-agents azure-identity
+        pip show azure-ai-projects azure-ai-agents
 
     - name: Get Project Connection Details
       id: project_details
