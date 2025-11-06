@@ -44,6 +44,23 @@ def main():
     
     try:
         print("Initializing Azure AI Project Client...")
+        print(f"Endpoint: {project_endpoint}")
+        print(f"Project Name: {project_name}")
+        print()
+        
+        # Check the resource type
+        print("⚠️  IMPORTANT: Checking resource type...")
+        print(f"   Endpoint format: {project_endpoint}")
+        
+        if "cognitiveservices.azure.com" in project_endpoint:
+            print("   ❌ This is a Cognitive Services account")
+            print("   ℹ️  Cognitive Services accounts don't support the Agents API")
+            print()
+            print("   You have two options:")
+            print("   1. Create a proper AI Foundry PROJECT (not just a resource)")
+            print("   2. Use the Azure AI Foundry portal to manually create agents")
+            print()
+            raise Exception("Cognitive Services accounts don't support automated agent creation via SDK")
         
         # Initialize AIProjectClient with the endpoint
         project_client = AIProjectClient(
@@ -145,21 +162,63 @@ Be helpful, professional, and thorough in your analysis.""",
         print("=" * 70)
         
         error_msg = str(e).lower()
-        if 'enterprise' in error_msg or 'mcp' in error_msg:
+        
+        # Check if it's a Cognitive Services vs AI Foundry Project issue
+        if 'cognitive services' in error_msg or 'cognitiveservices' in project_endpoint.lower():
             print()
-            print("❌ MCP Tools Limitation Detected")
-            print("   MCP tools require 'Enterprise offering' tier")
-            print("   Standard Azure Cognitive Services doesn't support MCP via API")
+            print("❌ Resource Type Mismatch")
             print()
-            print("✅ However, the Azure AI Foundry Portal DOES support MCP!")
-            print("   You can create the agent manually through the web UI.")
+            print("Your resource 'davidsr-ai-project-resourcev2' is a:")
+            print("   🔸 Cognitive Services Account")
+            print()
+            print("For automated agent creation with MCP, you need:")
+            print("   ✅ AI Foundry PROJECT (not just a Cognitive Services resource)")
+            print()
+            print("=" * 70)
+            print("HOW TO CREATE AN AI FOUNDRY PROJECT")
+            print("=" * 70)
+            print()
+            print("1. Go to https://ai.azure.com")
+            print("2. Click '+ New project' (not '+ New resource')")
+            print("3. Follow the wizard to create a PROJECT")
+            print("4. Once created, update your GitHub secrets with:")
+            print("   - AI_PROJECT_NAME: <new project name>")
+            print("   - The project will have a different endpoint format")
+            print()
+            print("Note: AI Foundry Projects can use your existing")
+            print("      Cognitive Services resources for the AI models.")
+            print()
+        elif 'enterprise' in error_msg or 'mcp' in error_msg:
+            print()
+            print("❌ MCP Tools Limitation")
+            print("   MCP tools may require 'Enterprise offering' tier")
+            print()
+        elif '404' in error_msg or 'not found' in error_msg:
+            print()
+            print("❌ Agents API Not Available")
+            print()
+            print("The Agents API endpoint returned 404 (Not Found).")
+            print()
+            if "cognitiveservices" in project_endpoint.lower():
+                print("Reason: You're using a Cognitive Services account,")
+                print("        which doesn't have the Agents API.")
+                print()
+                print("Solution: Create an AI Foundry PROJECT at https://ai.azure.com")
+            else:
+                print("This could mean:")
+                print("  • Wrong endpoint format")
+                print("  • Agents API not enabled for this region")
+                print("  • Service principal lacks permissions")
+            print()
         else:
             print()
             print(f"Error Type: {type(e).__name__}")
             print(f"Error Message: {str(e)}")
             print()
-            print("Full Traceback:")
-            traceback.print_exc()
+            if os.environ.get('DEBUG'):
+                print("Full Traceback:")
+                traceback.print_exc()
+                print()
         
         print()
         print("=" * 70)
