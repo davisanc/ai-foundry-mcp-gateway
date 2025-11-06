@@ -132,6 +132,10 @@ jobs:
         pip install --upgrade azure-ai-projects azure-ai-agents azure-identity
         pip show azure-ai-projects azure-ai-agents
 
+    - name: Grant Agent Creation Permissions
+      run: |
+        bash .github/scripts/grant_permissions.sh
+
     - name: Get Project Connection Details
       id: project_details
       run: |
