@@ -4,7 +4,7 @@
 echo "Looking up AI Foundry project: $AI_PROJECT_NAME"
 echo "Resource Group: $AI_PROJECT_RESOURCE_GROUP"
 
-# Get the project resource to find discovery URL
+# Get the project resource
 PROJECT_JSON=$(az resource show \
   --name "$AI_PROJECT_NAME" \
   --resource-group "$AI_PROJECT_RESOURCE_GROUP" \
@@ -20,18 +20,18 @@ if [ -n "$RESOURCE_ID" ]; then
   echo "  Resource ID: $RESOURCE_ID"
   echo "  Location: $LOCATION"
   
-  # Try to get the endpoint from properties
-  PROPERTIES_ENDPOINT=$(echo "$PROJECT_JSON" | jq -r '.properties.endpoint // empty')
+  # Try to get the discoveryUrl from properties
+  DISCOVERY_URL=$(echo "$PROJECT_JSON" | jq -r '.properties.endpoints.discoveryUrl // empty')
   
-  if [ -n "$PROPERTIES_ENDPOINT" ]; then
-    # Use the endpoint from the resource properties
-    PROJECT_ENDPOINT="$PROPERTIES_ENDPOINT"
-    echo "Using properties endpoint: $PROJECT_ENDPOINT"
+  if [ -n "$DISCOVERY_URL" ]; then
+    # Use the discovery URL from the resource
+    PROJECT_ENDPOINT="$DISCOVERY_URL"
+    echo "Using discoveryUrl from properties: $PROJECT_ENDPOINT"
   else
-    # Construct Cognitive Services endpoint format
-    # Format: https://<project-name>.cognitiveservices.azure.com/
-    PROJECT_ENDPOINT="https://${AI_PROJECT_NAME}.cognitiveservices.azure.com"
-    echo "Using constructed endpoint: $PROJECT_ENDPOINT"
+    # Construct AI Foundry project endpoint
+    # Format: https://<project-name>.services.ai.azure.com/api/projects/<project-name>
+    PROJECT_ENDPOINT="https://${AI_PROJECT_NAME}.services.ai.azure.com/api/projects/${AI_PROJECT_NAME}"
+    echo "Constructed AI Foundry project endpoint: $PROJECT_ENDPOINT"
   fi
   
   echo "project_endpoint=$PROJECT_ENDPOINT" >> $GITHUB_OUTPUT

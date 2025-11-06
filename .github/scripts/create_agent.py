@@ -44,25 +44,12 @@ def main():
     
     try:
         print("Initializing Azure AI Project Client...")
-        print(f"Endpoint: {project_endpoint}")
+        print(f"Project Endpoint: {project_endpoint}")
         print(f"Project Name: {project_name}")
         print()
         
-        # Check the resource type
-        print("⚠️  IMPORTANT: Checking resource type...")
-        print(f"   Endpoint format: {project_endpoint}")
-        
-        if "cognitiveservices.azure.com" in project_endpoint:
-            print("   ❌ This is a Cognitive Services account")
-            print("   ℹ️  Cognitive Services accounts don't support the Agents API")
-            print()
-            print("   You have two options:")
-            print("   1. Create a proper AI Foundry PROJECT (not just a resource)")
-            print("   2. Use the Azure AI Foundry portal to manually create agents")
-            print()
-            raise Exception("Cognitive Services accounts don't support automated agent creation via SDK")
-        
-        # Initialize AIProjectClient with the endpoint
+        # Initialize AIProjectClient with the AI Foundry project endpoint
+        # Expected format: https://<project>.services.ai.azure.com/api/projects/<project>
         project_client = AIProjectClient(
             endpoint=project_endpoint,
             credential=credential,
