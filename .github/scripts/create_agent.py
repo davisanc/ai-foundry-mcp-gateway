@@ -46,19 +46,40 @@ def main():
         print("Initializing Azure AI Project Client...")
         print(f"Project Endpoint: {project_endpoint}")
         print(f"Project Name: {project_name}")
+        print(f"Subscription: {subscription_id}")
+        print(f"Resource Group: {resource_group}")
         print()
         
-        # Initialize AIProjectClient with the AI Foundry project endpoint
-        # Expected format: https://<project>.services.ai.azure.com/api/projects/<project>
-        project_client = AIProjectClient(
-            endpoint=project_endpoint,
-            credential=credential,
-            subscription_id=subscription_id,
-            resource_group_name=resource_group,
-            project_name=project_name
-        )
+        # The AIProjectClient might need different parameters based on the resource type
+        # For AIServices (Cognitive Services with AI capabilities), we may not need
+        # to specify subscription_id, resource_group_name, and project_name
         
-        print("✅ Connected to AI Project!")
+        try:
+            # Attempt 1: Full parameters (for ML workspace-based projects)
+            print("Attempt 1: Initializing with full project parameters...")
+            project_client = AIProjectClient(
+                endpoint=project_endpoint,
+                credential=credential,
+                subscription_id=subscription_id,
+                resource_group_name=resource_group,
+                project_name=project_name
+            )
+            print("✅ Connected with full parameters!")
+        except Exception as e1:
+            print(f"Failed with full parameters: {e1}")
+            print()
+            print("Attempt 2: Initializing with endpoint and credential only...")
+            try:
+                # Attempt 2: Minimal parameters (for AIServices resources)
+                project_client = AIProjectClient(
+                    endpoint=project_endpoint,
+                    credential=credential
+                )
+                print("✅ Connected with minimal parameters!")
+            except Exception as e2:
+                print(f"Failed with minimal parameters: {e2}")
+                raise Exception(f"Could not initialize AI Project Client. Errors: [1: {e1}] [2: {e2}]")
+        
         print()
         
         # Create MCP tool configuration
