@@ -133,8 +133,15 @@ jobs:
         pip show azure-ai-projects azure-ai-agents
 
     - name: Grant Agent Creation Permissions
+      continue-on-error: true
       run: |
         bash .github/scripts/grant_permissions.sh
+
+    - name: Wait for Role Assignment Propagation
+      run: |
+        echo "⏳ Waiting 60 seconds for Azure role assignments to propagate..."
+        sleep 60
+        echo "✅ Role assignment propagation wait complete"
 
     - name: Get Project Connection Details
       id: project_details
