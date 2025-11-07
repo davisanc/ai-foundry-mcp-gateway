@@ -96,13 +96,14 @@ def main():
             tool_definitions = mcp_tool.definitions
         else:
             # Fallback: manually construct MCP tool definition
-            print("McpTool class not available, using manual configuration")
+            # Try different formats based on API error messages
+            print("McpTool class not available, trying manual configurations")
+            
+            # Format 1: server_label and server_url at top level with type: mcp
             tool_definitions = [{
                 "type": "mcp",
-                "mcp": {
-                    "server_label": "document_mcp_server",
-                    "server_url": mcp_url
-                }
+                "server_label": "document_mcp_server",
+                "server_url": mcp_url
             }]
         
         print(f"MCP Server Label: document_mcp_server")
