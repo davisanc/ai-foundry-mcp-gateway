@@ -53,18 +53,54 @@ app.get('/healthz', (_, res) => res.json({ status: 'ok' }));
 app.get('/mcp/sse', async (req, res) => {
   console.log('🔌 MCP SSE connection initiated');
   
-  const transport = new SSEServerTransport('/mcp/message', res);
+  // Set headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  
+  // Send a comment every 30 seconds to keep connection alive
+  const keepAliveInterval = setInterval(() => {
+    res.write(': keep-alive\n\n');
+  }, 30000);
+  
+  // Create SSE transport with unique endpoint path
+  const connectionId = require('uuid').v4();
+  const transport = new SSEServerTransport(`/mcp/message?sessionId=${connectionId}`, res);
   const mcpServer = createMCPServer(sessions);
   
-  await mcpServer.connect(transport);
-  
-  console.log('✅ MCP server connected via SSE');
+  try {
+    await mcpServer.connect(transport);
+    console.log(`✅ MCP server connected via SSE (connection: ${connectionId})`);
+    
+    // Handle connection close
+    res.on('close', () => {
+      console.log(`🔌 MCP SSE connection closed (connection: ${connectionId})`);
+      clearInterval(keepAliveInterval);
+      // Don't call transport.close() as it might not exist
+    });
+    
+    res.on('error', (error) => {
+      console.error('❌ MCP SSE connection error:', error);
+      clearInterval(keepAliveInterval);
+    });
+    
+  } catch (error) {
+    console.error('❌ Error connecting MCP server:', error);
+    clearInterval(keepAliveInterval);
+    if (!res.headersSent) {
+      res.status(500).send('Failed to establish MCP connection');
+    }
+  }
 });
 
 app.post('/mcp/message', async (req, res) => {
   // This endpoint receives messages from the MCP client
-  // The SSE transport handles the actual message processing
-  console.log('📨 MCP message received:', req.body);
+  // The SSEServerTransport should handle these automatically
+  console.log('📨 MCP message received:', JSON.stringify(req.body, null, 2));
+  
+  // The transport handles the actual processing
+  // Just acknowledge receipt
   res.json({ received: true });
 });
 // ==================== END MCP ENDPOINT ====================
