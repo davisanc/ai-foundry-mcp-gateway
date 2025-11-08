@@ -113,10 +113,14 @@ app.get('/mcp/sse', async (req, res) => {
 app.post('/mcp/message', async (req, res) => {
   const connectionId = req.query.sessionId;
   
-  console.log(`📨 MCP message received for connection: ${connectionId}`);
-  console.log(`🟡 Total connections at lookup: ${mcpConnections.size}`);
-  console.log(`🟡 Available connection IDs: ${Array.from(mcpConnections.keys()).join(', ')}`);
-  console.log('📨 Message:', JSON.stringify(req.body, null, 2));
+  const debugInfo = {
+    requestedId: connectionId,
+    totalConnections: mcpConnections.size,
+    availableIds: Array.from(mcpConnections.keys()),
+    message: req.body.method
+  };
+  
+  console.log(`📨 MCP message received:`, JSON.stringify(debugInfo, null, 2));
   
   // Get the connection
   const connection = mcpConnections.get(connectionId);
@@ -126,7 +130,11 @@ app.post('/mcp/message', async (req, res) => {
     console.error(`❌ No active MCP connection found for: ${connectionId}`);
     return res.status(404).json({ 
       jsonrpc: '2.0',
-      error: { code: -32001, message: 'Connection not found' },
+      error: { 
+        code: -32001, 
+        message: 'Connection not found',
+        debug: debugInfo // Include debug info in error response
+      },
       id: req.body.id
     });
   }
