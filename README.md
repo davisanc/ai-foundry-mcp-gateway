@@ -1,5 +1,7 @@
 # Azure AI Foundry + MCP + APIM Demo
 
+✅ **MCP Server Status: WORKING**
+
 This repo demonstrates a complete **end-to-end automated deployment** of an AI Agent with Model Context Protocol (MCP) capabilities, deployed via GitHub Actions.
 
 ## 🏗️ Architecture

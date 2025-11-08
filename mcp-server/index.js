@@ -219,6 +219,8 @@ app.post('/mcp/message', async (req, res) => {
     if (message.method === 'tools/call') {
       const { name, arguments: args } = message.params;
       console.log(`🔧 Executing tool: ${name}`);
+      console.log(`🔧 Tool arguments:`, JSON.stringify(args, null, 2));
+      console.log(`🔧 Available sessions:`, Object.keys(sessions));
       
       let result;
       try {
@@ -241,9 +243,19 @@ app.post('/mcp/message', async (req, res) => {
           }
           case 'get_document': {
             const session = sessions[args.sessionId];
-            if (!session) throw new Error(`Session not found`);
+            if (!session) {
+              console.error(`❌ Session not found: ${args.sessionId}`);
+              console.error(`   Available sessions:`, Object.keys(sessions));
+              throw new Error(`Session not found: ${args.sessionId}`);
+            }
+            console.log(`📄 Session found, has ${session.docs.length} documents`);
             const doc = session.docs.find(d => d.id === args.docId);
-            if (!doc) throw new Error(`Document not found`);
+            if (!doc) {
+              console.error(`❌ Document not found: ${args.docId}`);
+              console.error(`   Available docs:`, session.docs.map(d => d.id));
+              throw new Error(`Document not found: ${args.docId}`);
+            }
+            console.log(`✅ Document found: ${doc.title}`);
             result = {
               content: [{
                 type: 'text',
@@ -304,6 +316,18 @@ app.post('/mcp/message', async (req, res) => {
 });
 // ==================== END MCP ENDPOINT ====================
 
+// Debug endpoint to check sessions
+app.get('/debug/sessions', (req, res) => {
+  const sessionList = Object.keys(sessions).map(sid => ({
+    sessionId: sid,
+    documentCount: sessions[sid].docs.length,
+    documents: sessions[sid].docs.map(d => ({ id: d.id, title: d.title }))
+  }));
+  res.json({ 
+    totalSessions: sessionList.length,
+    sessions: sessionList 
+  });
+});
 
 app.post('/session', (req, res) => {
   const sid = uuidv4();
