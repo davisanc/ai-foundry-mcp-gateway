@@ -75,8 +75,13 @@ app.get('/mcp/sse', async (req, res) => {
   }, 30000);
   
   try {
-    // Create MCP server and transport
-    const transport = new SSEServerTransport(`/mcp/message?sessionId=${connectionId}`, res);
+    // Send the endpoint event FIRST with our connection ID
+    const endpoint = `/mcp/message?sessionId=${connectionId}`;
+    res.write(`event: endpoint\ndata: ${endpoint}\n\n`);
+    console.log(`📤 Sent endpoint event: ${endpoint}`);
+    
+    // Create MCP server and transport (but don't let it send its own endpoint event)
+    const transport = new SSEServerTransport(endpoint, res);
     const mcpServer = createMCPServer(sessions);
     
     // Store the connection with res for sending SSE messages
