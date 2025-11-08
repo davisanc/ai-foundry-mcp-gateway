@@ -81,6 +81,8 @@ app.get('/mcp/sse', async (req, res) => {
     
     // Store the connection with res for sending SSE messages
     mcpConnections.set(connectionId, { server: mcpServer, transport, res });
+    console.log(`🔵 STORED connection: ${connectionId}, Total connections: ${mcpConnections.size}`);
+    console.log(`🔵 All connection IDs: ${Array.from(mcpConnections.keys()).join(', ')}`);
     
     // Connect the MCP server to this transport
     await mcpServer.connect(transport);
@@ -112,10 +114,13 @@ app.post('/mcp/message', async (req, res) => {
   const connectionId = req.query.sessionId;
   
   console.log(`📨 MCP message received for connection: ${connectionId}`);
+  console.log(`🟡 Total connections at lookup: ${mcpConnections.size}`);
+  console.log(`🟡 Available connection IDs: ${Array.from(mcpConnections.keys()).join(', ')}`);
   console.log('📨 Message:', JSON.stringify(req.body, null, 2));
   
   // Get the connection
   const connection = mcpConnections.get(connectionId);
+  console.log(`🟡 Connection lookup result: ${connection ? 'FOUND ✅' : 'NOT FOUND ❌'}`);
   
   if (!connection) {
     console.error(`❌ No active MCP connection found for: ${connectionId}`);
