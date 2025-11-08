@@ -49,6 +49,9 @@ app.get('/', (_, res) => {
 app.get('/healthz', (_, res) => res.json({ status: 'ok' }));
 
 // ==================== MCP ENDPOINT ====================
+// Store active MCP server connections
+const mcpConnections = new Map();
+
 // SSE endpoint for Model Context Protocol
 app.get('/mcp/sse', async (req, res) => {
   console.log('🔌 MCP SSE connection initiated');
@@ -59,17 +62,27 @@ app.get('/mcp/sse', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
   
-  // Send a comment every 30 seconds to keep connection alive
+  // Generate unique connection ID
+  const connectionId = uuidv4();
+  
+  // Send a keep-alive comment every 30 seconds
   const keepAliveInterval = setInterval(() => {
-    res.write(': keep-alive\n\n');
+    try {
+      res.write(': keep-alive\n\n');
+    } catch (e) {
+      clearInterval(keepAliveInterval);
+    }
   }, 30000);
   
-  // Create SSE transport with unique endpoint path
-  const connectionId = require('uuid').v4();
-  const transport = new SSEServerTransport(`/mcp/message?sessionId=${connectionId}`, res);
-  const mcpServer = createMCPServer(sessions);
-  
   try {
+    // Create MCP server and transport
+    const transport = new SSEServerTransport(`/mcp/message?sessionId=${connectionId}`, res);
+    const mcpServer = createMCPServer(sessions);
+    
+    // Store the connection with res for sending SSE messages
+    mcpConnections.set(connectionId, { server: mcpServer, transport, res });
+    
+    // Connect the MCP server to this transport
     await mcpServer.connect(transport);
     console.log(`✅ MCP server connected via SSE (connection: ${connectionId})`);
     
@@ -77,12 +90,13 @@ app.get('/mcp/sse', async (req, res) => {
     res.on('close', () => {
       console.log(`🔌 MCP SSE connection closed (connection: ${connectionId})`);
       clearInterval(keepAliveInterval);
-      // Don't call transport.close() as it might not exist
+      mcpConnections.delete(connectionId);
     });
     
     res.on('error', (error) => {
       console.error('❌ MCP SSE connection error:', error);
       clearInterval(keepAliveInterval);
+      mcpConnections.delete(connectionId);
     });
     
   } catch (error) {
@@ -95,13 +109,182 @@ app.get('/mcp/sse', async (req, res) => {
 });
 
 app.post('/mcp/message', async (req, res) => {
-  // This endpoint receives messages from the MCP client
-  // The SSEServerTransport should handle these automatically
-  console.log('📨 MCP message received:', JSON.stringify(req.body, null, 2));
+  const connectionId = req.query.sessionId;
   
-  // The transport handles the actual processing
-  // Just acknowledge receipt
-  res.json({ received: true });
+  console.log(`📨 MCP message received for connection: ${connectionId}`);
+  console.log('📨 Message:', JSON.stringify(req.body, null, 2));
+  
+  // Get the connection
+  const connection = mcpConnections.get(connectionId);
+  
+  if (!connection) {
+    console.error(`❌ No active MCP connection found for: ${connectionId}`);
+    return res.status(404).json({ 
+      jsonrpc: '2.0',
+      error: { code: -32001, message: 'Connection not found' },
+      id: req.body.id
+    });
+  }
+  
+  try {
+    const message = req.body;
+    
+    // Handle JSON-RPC messages manually
+    if (message.method === 'initialize') {
+      const response = {
+        jsonrpc: '2.0',
+        result: {
+          protocolVersion: '2024-11-05',
+          capabilities: { tools: {}, resources: {} },
+          serverInfo: { name: 'ai-foundry-mcp-gateway', version: '1.0.0' },
+        },
+        id: message.id,
+      };
+      connection.res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
+      console.log('✅ Sent initialization response');
+      return res.json({ received: true });
+    }
+    
+    if (message.method === 'tools/list') {
+      // Import tool handlers from mcp-handler
+      const { createMCPServer } = require('./mcp-handler');
+      const tempServer = createMCPServer(sessions);
+      
+      // Get tool definitions
+      const tools = [
+        {
+          name: 'list_documents',
+          description: 'List all documents in a session',
+          inputSchema: {
+            type: 'object',
+            properties: { sessionId: { type: 'string' } },
+            required: ['sessionId'],
+          },
+        },
+        {
+          name: 'get_document',
+          description: 'Get document content',
+          inputSchema: {
+            type: 'object',
+            properties: { sessionId: { type: 'string' }, docId: { type: 'string' } },
+            required: ['sessionId', 'docId'],
+          },
+        },
+        {
+          name: 'search_documents',
+          description: 'Search documents',
+          inputSchema: {
+            type: 'object',
+            properties: { query: { type: 'string' }, sessionId: { type: 'string' } },
+            required: ['query'],
+          },
+        },
+        {
+          name: 'upload_document',
+          description: 'Upload document',
+          inputSchema: {
+            type: 'object',
+            properties: { sessionId: { type: 'string' }, title: { type: 'string' }, text: { type: 'string' } },
+            required: ['sessionId', 'title', 'text'],
+          },
+        },
+      ];
+      
+      const response = {
+        jsonrpc: '2.0',
+        result: { tools },
+        id: message.id,
+      };
+      connection.res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
+      console.log('✅ Sent tools list');
+      return res.json({ received: true });
+    }
+    
+    if (message.method === 'tools/call') {
+      const { name, arguments: args } = message.params;
+      console.log(`🔧 Executing tool: ${name}`);
+      
+      let result;
+      try {
+        // Execute tool directly
+        switch (name) {
+          case 'list_documents': {
+            const session = sessions[args.sessionId];
+            if (!session) throw new Error(`Session not found: ${args.sessionId}`);
+            result = {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  sessionId: args.sessionId,
+                  documentCount: session.docs.length,
+                  documents: session.docs.map(d => ({ id: d.id, title: d.title, textLength: d.text.length })),
+                }, null, 2),
+              }],
+            };
+            break;
+          }
+          case 'get_document': {
+            const session = sessions[args.sessionId];
+            if (!session) throw new Error(`Session not found`);
+            const doc = session.docs.find(d => d.id === args.docId);
+            if (!doc) throw new Error(`Document not found`);
+            result = {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({ id: doc.id, title: doc.title, text: doc.text }, null, 2),
+              }],
+            };
+            break;
+          }
+          case 'search_documents': {
+            const results = [];
+            const searchLower = args.query.toLowerCase();
+            const sessionsToSearch = args.sessionId ? { [args.sessionId]: sessions[args.sessionId] } : sessions;
+            for (const [sid, session] of Object.entries(sessionsToSearch)) {
+              if (!session) continue;
+              for (const doc of session.docs) {
+                if (doc.text.toLowerCase().includes(searchLower) || doc.title.toLowerCase().includes(searchLower)) {
+                  const index = doc.text.toLowerCase().indexOf(searchLower);
+                  results.push({ sessionId: sid, docId: doc.id, title: doc.title, snippet: `...${doc.text.substring(Math.max(0, index - 50), Math.min(doc.text.length, index + 50))}...` });
+                }
+              }
+            }
+            result = { content: [{ type: 'text', text: JSON.stringify({ query: args.query, resultCount: results.length, results }, null, 2) }] };
+            break;
+          }
+          case 'upload_document': {
+            const session = sessions[args.sessionId];
+            if (!session) throw new Error(`Session not found`);
+            const docId = uuidv4();
+            session.docs.push({ id: docId, title: args.title, text: args.text });
+            result = { content: [{ type: 'text', text: JSON.stringify({ success: true, docId, title: args.title, sessionId: args.sessionId }, null, 2) }] };
+            break;
+          }
+          default:
+            throw new Error(`Unknown tool: ${name}`);
+        }
+        
+        const response = { jsonrpc: '2.0', result, id: message.id };
+        connection.res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
+        console.log(`✅ Tool ${name} executed`);
+        return res.json({ received: true });
+        
+      } catch (toolError) {
+        const errorResponse = { jsonrpc: '2.0', error: { code: -32000, message: toolError.message }, id: message.id };
+        connection.res.write(`event: message\ndata: ${JSON.stringify(errorResponse)}\n\n`);
+        return res.json({ received: true });
+      }
+    }
+    
+    // Method not found
+    const errorResponse = { jsonrpc: '2.0', error: { code: -32601, message: `Method not found: ${message.method}` }, id: message.id };
+    connection.res.write(`event: message\ndata: ${JSON.stringify(errorResponse)}\n\n`);
+    return res.json({ received: true });
+    
+  } catch (error) {
+    console.error('❌ Error handling MCP message:', error);
+    res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: error.message }, id: req.body.id });
+  }
 });
 // ==================== END MCP ENDPOINT ====================
 
