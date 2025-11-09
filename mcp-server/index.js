@@ -169,6 +169,15 @@ app.post('/mcp/message', async (req, res) => {
       // Get tool definitions
       const tools = [
         {
+          name: 'create_session',
+          description: 'Create a new document session',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            required: [],
+          },
+        },
+        {
           name: 'list_documents',
           description: 'List all documents in a session',
           inputSchema: {
@@ -226,6 +235,18 @@ app.post('/mcp/message', async (req, res) => {
       try {
         // Execute tool directly
         switch (name) {
+          case 'create_session': {
+            const sid = uuidv4();
+            sessions[sid] = { docs: [], history: [] };
+            console.log(`✅ New session created via MCP: ${sid}`);
+            result = {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({ sessionId: sid, message: 'Session created successfully' }, null, 2),
+              }],
+            };
+            break;
+          }
           case 'list_documents': {
             const session = sessions[args.sessionId];
             if (!session) throw new Error(`Session not found: ${args.sessionId}`);
