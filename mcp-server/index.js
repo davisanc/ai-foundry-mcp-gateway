@@ -266,6 +266,7 @@ app.post('/mcp/message', async (req, res) => {
                 type: 'text',
                 text: JSON.stringify({ sessionId: sid, message: 'Session created successfully' }, null, 2),
               }],
+              isError: false
             };
             break;
           }
@@ -281,6 +282,7 @@ app.post('/mcp/message', async (req, res) => {
                   documents: session.docs.map(d => ({ id: d.id, title: d.title, textLength: d.text.length })),
                 }, null, 2),
               }],
+              isError: false
             };
             break;
           }
@@ -304,6 +306,7 @@ app.post('/mcp/message', async (req, res) => {
                 type: 'text',
                 text: JSON.stringify({ id: doc.id, title: doc.title, text: doc.text }, null, 2),
               }],
+              isError: false
             };
             break;
           }
@@ -320,7 +323,7 @@ app.post('/mcp/message', async (req, res) => {
                 }
               }
             }
-            result = { content: [{ type: 'text', text: JSON.stringify({ query: args.query, resultCount: results.length, results }, null, 2) }] };
+            result = { content: [{ type: 'text', text: JSON.stringify({ query: args.query, resultCount: results.length, results }, null, 2) }], isError: false };
             break;
           }
           case 'upload_document': {
@@ -328,7 +331,7 @@ app.post('/mcp/message', async (req, res) => {
             if (!session) throw new Error(`Session not found`);
             const docId = uuidv4();
             session.docs.push({ id: docId, title: args.title, text: args.text });
-            result = { content: [{ type: 'text', text: JSON.stringify({ success: true, docId, title: args.title, sessionId: args.sessionId }, null, 2) }] };
+            result = { content: [{ type: 'text', text: JSON.stringify({ success: true, docId, title: args.title, sessionId: args.sessionId }, null, 2) }], isError: false };
             break;
           }
           default:
@@ -339,7 +342,7 @@ app.post('/mcp/message', async (req, res) => {
         
         // MCP Spec 2.1: For JSON-RPC requests, return SSE stream OR JSON
         if (wantsSSE) {
-          // Return SSE stream with response (new pattern per spec)
+          // Return response ONLY via NEW SSE stream (don't use long-lived connection)
           console.log(`📤 Returning response via NEW SSE stream (per MCP spec)`);
           res.setHeader('Content-Type', 'text/event-stream');
           res.setHeader('Cache-Control', 'no-cache');
@@ -358,7 +361,15 @@ app.post('/mcp/message', async (req, res) => {
         }
         
       } catch (toolError) {
-        const errorResponse = { jsonrpc: '2.0', error: { code: -32000, message: toolError.message }, id: message.id };
+        // Per MCP spec: Tool execution errors should be returned as results with isError: true
+        const errorResult = {
+          content: [{
+            type: 'text',
+            text: `Tool execution failed: ${toolError.message}`
+          }],
+          isError: true
+        };
+        const errorResponse = { jsonrpc: '2.0', result: errorResult, id: message.id };
         
         if (wantsSSE) {
           res.setHeader('Content-Type', 'text/event-stream');

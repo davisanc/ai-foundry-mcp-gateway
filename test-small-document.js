@@ -1,6 +1,6 @@
 const { EventSource } = require('eventsource');
 
-const SESSION_ID = 'b3d6bb63-94d9-4e02-9850-513f11ee8209'; // Existing session
+const SESSION_ID = 'b80f4688-9167-44dd-be69-9c78133eb4a0'; // Existing session
 const SMALL_TEXT = 'OrderID,Customer,Amount\nORD001,Alice,10.50\nORD002,Bob,20.75\nORD003,Charlie,15.25';
 
 console.log('🔗 Connecting to MCP server...');
