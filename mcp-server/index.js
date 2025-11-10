@@ -355,10 +355,9 @@ app.post('/mcp/message', async (req, res) => {
           // Per spec: "After the JSON-RPC response has been sent, the server SHOULD close the SSE stream"
           res.end();
         } else {
-          // Fallback: send via existing connection SSE AND return JSON
-          connection.res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
-          console.log(`✅ Tool ${name} executed (sent via existing connection)`);
-          return res.json({ received: true });
+          // Azure AI Agent closes SSE after tools/list, so we MUST return JSON directly
+          console.log(`✅ Tool ${name} executed, returning JSON response (SSE connection may be closed)`);
+          return res.json(response);
         }
         
       } catch (toolError) {
@@ -380,8 +379,8 @@ app.post('/mcp/message', async (req, res) => {
           console.log(`❌ Tool ${name} error sent via SSE, closing stream`);
           res.end();
         } else {
-          connection.res.write(`event: message\ndata: ${JSON.stringify(errorResponse)}\n\n`);
-          return res.json({ received: true });
+          console.log(`❌ Tool ${name} error, returning JSON response`);
+          return res.json(errorResponse);
         }
       }
       return; // Exit after handling tools/call
