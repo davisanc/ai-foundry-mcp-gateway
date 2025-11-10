@@ -122,7 +122,8 @@ app.post('/mcp/message', async (req, res) => {
     totalConnections: mcpConnections.size,
     availableIds: Array.from(mcpConnections.keys()),
     message: req.body.method,
-    accept: acceptHeader
+    accept: acceptHeader,
+    allHeaders: req.headers  // Log ALL headers
   };
   
   console.log(`📨 MCP message received:`, JSON.stringify(debugInfo, null, 2));
