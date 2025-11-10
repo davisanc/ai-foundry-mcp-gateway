@@ -115,12 +115,14 @@ app.get('/mcp/sse', async (req, res) => {
 
 app.post('/mcp/message', async (req, res) => {
   const connectionId = req.query.sessionId;
+  const acceptHeader = req.headers.accept || '';
   
   const debugInfo = {
     requestedId: connectionId,
     totalConnections: mcpConnections.size,
     availableIds: Array.from(mcpConnections.keys()),
-    message: req.body.method
+    message: req.body.method,
+    accept: acceptHeader
   };
   
   console.log(`📨 MCP message received:`, JSON.stringify(debugInfo, null, 2));
@@ -142,6 +144,9 @@ app.post('/mcp/message', async (req, res) => {
     });
   }
   
+  // Check if client accepts SSE (for tools/call responses per MCP spec)
+  const wantsSSE = acceptHeader.includes('text/event-stream');
+  
   try {
     const message = req.body;
     
@@ -156,9 +161,17 @@ app.post('/mcp/message', async (req, res) => {
         },
         id: message.id,
       };
+      
+      // For initialize, send via SSE on the long-lived connection AND return JSON
       connection.res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
-      console.log('✅ Sent initialization response');
-      return res.json({ received: true });
+      console.log('✅ Sent initialization response via SSE');
+      
+      // Also return as JSON if client wants it
+      if (wantsSSE) {
+        return res.status(202).send(); // Accepted, response sent via SSE
+      } else {
+        return res.json(response);
+      }
     }
     
     if (message.method === 'tools/list') {
@@ -220,9 +233,17 @@ app.post('/mcp/message', async (req, res) => {
         result: { tools },
         id: message.id,
       };
+      
+      // For tools/list, send via SSE on the long-lived connection AND return JSON
       connection.res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
-      console.log('✅ Sent tools list');
-      return res.json({ received: true });
+      console.log('✅ Sent tools list via SSE');
+      
+      // Also return as JSON if client wants it
+      if (wantsSSE) {
+        return res.status(202).send(); // Accepted, response sent via SSE
+      } else {
+        return res.json(response);
+      }
     }
     
     if (message.method === 'tools/call') {
@@ -230,6 +251,7 @@ app.post('/mcp/message', async (req, res) => {
       console.log(`🔧 Executing tool: ${name}`);
       console.log(`🔧 Tool arguments:`, JSON.stringify(args, null, 2));
       console.log(`🔧 Available sessions:`, Object.keys(sessions));
+      console.log(`🔧 Client wants SSE:`, wantsSSE);
       
       let result;
       try {
@@ -314,21 +336,58 @@ app.post('/mcp/message', async (req, res) => {
         }
         
         const response = { jsonrpc: '2.0', result, id: message.id };
-        connection.res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
-        console.log(`✅ Tool ${name} executed`);
-        return res.json({ received: true });
+        
+        // MCP Spec 2.1: For JSON-RPC requests, return SSE stream OR JSON
+        if (wantsSSE) {
+          // Return SSE stream with response (new pattern per spec)
+          console.log(`📤 Returning response via NEW SSE stream (per MCP spec)`);
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.setHeader('Connection', 'keep-alive');
+          
+          res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
+          console.log(`✅ Tool ${name} response sent via SSE, closing stream`);
+          
+          // Per spec: "After the JSON-RPC response has been sent, the server SHOULD close the SSE stream"
+          res.end();
+        } else {
+          // Fallback: send via existing connection SSE AND return JSON
+          connection.res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
+          console.log(`✅ Tool ${name} executed (sent via existing connection)`);
+          return res.json({ received: true });
+        }
         
       } catch (toolError) {
         const errorResponse = { jsonrpc: '2.0', error: { code: -32000, message: toolError.message }, id: message.id };
-        connection.res.write(`event: message\ndata: ${JSON.stringify(errorResponse)}\n\n`);
-        return res.json({ received: true });
+        
+        if (wantsSSE) {
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.setHeader('Connection', 'keep-alive');
+          res.write(`event: message\ndata: ${JSON.stringify(errorResponse)}\n\n`);
+          console.log(`❌ Tool ${name} error sent via SSE, closing stream`);
+          res.end();
+        } else {
+          connection.res.write(`event: message\ndata: ${JSON.stringify(errorResponse)}\n\n`);
+          return res.json({ received: true });
+        }
       }
+      return; // Exit after handling tools/call
     }
     
     // Method not found
     const errorResponse = { jsonrpc: '2.0', error: { code: -32601, message: `Method not found: ${message.method}` }, id: message.id };
-    connection.res.write(`event: message\ndata: ${JSON.stringify(errorResponse)}\n\n`);
-    return res.json({ received: true });
+    
+    if (wantsSSE) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.write(`event: message\ndata: ${JSON.stringify(errorResponse)}\n\n`);
+      res.end();
+    } else {
+      connection.res.write(`event: message\ndata: ${JSON.stringify(errorResponse)}\n\n`);
+      return res.json({ received: true });
+    }
     
   } catch (error) {
     console.error('❌ Error handling MCP message:', error);
