@@ -5,6 +5,33 @@ info:
 servers:
   - url: http://localhost:3000
 paths:
+  /:
+    get:
+      summary: Welcome page
+      description: Returns a simple welcome message to confirm the MCP server is running
+      responses:
+        '200':
+          description: Server is running
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: MCP server OK
+  /healthz:
+    get:
+      summary: Health check endpoint
+      description: Returns health status for probes and monitoring
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
   /session:
     post:
       summary: Create a new session
