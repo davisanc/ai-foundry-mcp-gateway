@@ -1,12 +1,69 @@
 # Azure AI Agent MCP Tool Response Bug Report
 
-**Date:** November 9, 2025  
+**Date:** November 9-10, 2025  
 **Reporter:** David Sanchez  
 **Severity:** Critical - Blocks MCP tool functionality  
+**Update:** November 10, 2025 - **SMOKING GUN EVIDENCE FOUND**
+
+## 🚨 CRITICAL FINDING: Azure AI Agent Never Sends `tools/call` Requests
+
+After extensive debugging with comprehensive server logging, we have **definitive proof** that the Azure AI Agent **does not send `tools/call` requests to the MCP server at all**.
+
+### Evidence from Server Application Logs (November 10, 2025 12:55-12:57 UTC)
+
+**What the server receives:**
+```
+2025-11-10T12:57:08.6396419Z ✅ 📨 MCP message received: initialize
+2025-11-10T12:57:08.6398318Z 📝 Request headers: {"accept":"*/*","user-agent":"openai-mcp/1.0.0", ...}
+2025-11-10T12:57:08.6406302Z ✅ 📨 MCP message received: notifications/initialized
+2025-11-10T12:57:08.6407719Z ✅ 📨 MCP message received: tools/list
+2025-11-10T12:57:08.6679262Z 🔌 MCP SSE connection closed
+[NO FURTHER REQUESTS IN SERVER LOGS]
+```
+
+**What the agent claims it did:**
+```json
+{
+  "id": "call_ecXj6s5FEI30l8gkpVyxnkTl",
+  "type": "mcp",
+  "name": "get_document",
+  "arguments": "{\"sessionId\":\"ab0fa3c1-5db4-4f34-968e-f81c9cd18715\",\"docId\":\"bf4c7231-ad60-422f-810f-b76d5dab1f71\"}",
+  "output": null
+}
+```
+
+### The Pattern
+
+1. ✅ Azure AI Agent connects via SSE
+2. ✅ Agent sends `initialize` → Server responds
+3. ✅ Agent sends `notifications/initialized` → Server acknowledges
+4. ✅ Agent sends `tools/list` → Server returns all tools
+5. 🔌 **SSE connection closes**
+6. ❌ **Agent NEVER sends `tools/call` request to server**
+7. ❌ **Agent returns `output: null` without attempting execution**
+
+### Implications
+
+**This is NOT a response handling issue** - it's a fundamental bug in the Azure AI Agent's MCP client where:
+- The agent successfully discovers tools via the SSE handshake
+- The agent's SSE connection closes after `tools/list`
+- **The agent cannot send `tools/call` requests after the SSE connection closes**
+- The agent returns `null` because it never even attempted the tool call
+
+### Server Headers Analysis
+
+The Azure AI Agent sends these headers:
+- `Accept: */*` (NOT `text/event-stream`)
+- `User-Agent: openai-mcp/1.0.0`
+- MCP Protocol Version: `2024-11-05`
+
+The server correctly handles both SSE streaming and JSON responses, but **the agent never makes the tool execution request**.
+
+---
 
 ## Executive Summary
 
-Azure AI Agent's Model Context Protocol (MCP) integration has a critical bug where **all MCP tool calls return `null` output** regardless of whether the tool executes successfully. Additionally, when an MCP tool returns an error, **the agent hangs indefinitely in `in_progress` state** instead of handling the error gracefully.
+Azure AI Agent's Model Context Protocol (MCP) integration has a critical bug where **all MCP tool calls return `null` output** because **the agent never sends the actual `tools/call` request to the MCP server**. The agent successfully completes the MCP handshake (initialize, tools/list) but then closes the SSE connection and fails to execute any tools.
 
 ## Environment Details
 
