@@ -231,29 +231,39 @@ sessions = {
 
 ```
 1. Azure AI Agent connects to MCP endpoint
-   └─► GET /mcp/sse (Server-Sent Events)
+   ├─► GET /mcp/sse (Server-Sent Events)
+   └─► Server creates persistent SSE stream with unique connectionId
 
 2. Agent discovers available tools
-   ├─► Receives tool list: list_documents, get_document, 
-   │                       search_documents, upload_document
-   └─► Understands tool schemas
+   ├─► Sends: tools/list message via POST /mcp/message
+   ├─► Server receives message on same connectionId
+   ├─► Response sent back through SSE stream
+   └─► Agent receives tool list: list_documents, get_document, 
+                                  search_documents, upload_document
 
 3. User asks Agent: "Analyze the security policy"
    └─► Agent thinks: "I need to find and retrieve documents"
 
 4. Agent calls MCP tool: list_documents
-   ├─► POST /mcp/message
+   ├─► Sends: tools/call message via POST /mcp/message?sessionId={connectionId}
    ├─► MCP handler executes tool
-   └─► Returns: [{id: "doc-456", title: "Security Policy"}]
+   ├─► Response written to SSE stream: event: message, data: {jsonrpc response}
+   ├─► Agent receives via SSE stream: [{id: "doc-456", title: "Security Policy"}]
+   └─► POST request closes
 
 5. Agent calls MCP tool: get_document
    ├─► Arguments: {sessionId: "abc-123", docId: "doc-456"}
+   ├─► Sends: tools/call message via POST /mcp/message?sessionId={connectionId}
    ├─► MCP handler retrieves from sessions[abc-123].docs
-   └─► Returns full document text
+   ├─► Response written to SSE stream
+   ├─► Agent receives full document text via SSE stream
+   └─► POST request closes
 
 6. Agent analyzes document content
    └─► Agent responds to user with insights
 ```
+
+**CRITICAL:** All tool responses (both tools/list and tools/call) are sent back through the original SSE connection established in step 1, NOT through the POST response. The agent listens on the SSE stream for all MCP server responses.
 
 ---
 
@@ -351,6 +361,35 @@ Body: MCP protocol messages (JSON-RPC)
 ---
 
 ## Model Context Protocol Integration
+
+### MCP Communication Architecture
+
+The MCP server uses a **hybrid HTTP/SSE pattern** for communication:
+
+```
+Agent                          Server
+  │                              │
+  ├──── GET /mcp/sse ───────────►│ (1) Create SSE stream
+  │                              │     Return connectionId
+  │◄─────── SSE Stream ──────────┤ (2) Keep-alive connection
+  │  (long-lived, persistent)     │
+  │                              │
+  ├──── POST /mcp/message ──────►│ (3) Send tool request
+  │  ?sessionId={connectionId}   │     (tools/list, tools/call)
+  │                              │
+  │                              │ (4) Execute tool
+  │                              │
+  │◄─── SSE Event (response) ────┤ (5) Send response via SSE
+  │  event: message              │     stream
+  │  data: {jsonrpc response}    │
+  │                              │
+```
+
+**Key Points:**
+1. **Connection Establishment** - Agent initiates GET /mcp/sse to create persistent SSE stream
+2. **Request Delivery** - Tool requests sent via POST /mcp/message with connectionId
+3. **Response Delivery** - **CRITICAL** - All responses sent back through the SSE stream, NOT the POST response
+4. **Stream Persistence** - SSE stream remains open until agent disconnects
 
 ### What is MCP?
 
