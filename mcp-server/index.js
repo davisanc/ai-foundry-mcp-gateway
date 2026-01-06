@@ -342,30 +342,32 @@ app.post('/mcp/message', async (req, res) => {
         
         const response = { jsonrpc: '2.0', result, id: message.id };
         
-        // MCP Spec 2.1: For JSON-RPC requests, return SSE stream OR JSON
-        if (wantsSSE) {
-          // Return response ONLY via NEW SSE stream (don't use long-lived connection)
-          console.log(`📤 Returning response via NEW SSE stream (per MCP spec)`);
-          res.setHeader('Content-Type', 'text/event-stream');
-          res.setHeader('Cache-Control', 'no-cache');
-          res.setHeader('Connection', 'keep-alive');
-          
-          res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
-          console.log(`✅ Tool ${name} response sent via SSE, closing stream`);
-          
-          // Per spec: "After the JSON-RPC response has been sent, the server SHOULD close the SSE stream"
-          res.end();
+        // CRITICAL FIX: Always send response back through the ORIGINAL SSE connection
+        // The agent is listening on the long-lived SSE stream for tool responses
+        console.log(`✅ Tool ${name} executed, sending response via original SSE connection`);
+        console.log(`📤 Response being sent to agent:`);
+        console.log(`   jsonrpc: ${response.jsonrpc}`);
+        console.log(`   id: ${response.id}`);
+        console.log(`   result.isError: ${result.isError}`);
+        console.log(`   result.content[0].type: ${result.content[0].type}`);
+        console.log(`   result.content[0].text length: ${result.content[0].text.length}`);
+        console.log(`📤 Full response:`, JSON.stringify(response, null, 2));
+        
+        const sseConnection = mcpConnections.get(connectionId);
+        if (sseConnection && sseConnection.res && !sseConnection.res.writableEnded) {
+          try {
+            sseConnection.res.write(`event: message\ndata: ${JSON.stringify(response)}\n\n`);
+            console.log(`✅ Response sent via SSE connection ${connectionId}`);
+            // Send 200 OK to close the POST request
+            return res.status(200).json({ acknowledged: true });
+          } catch (sseError) {
+            console.error(`❌ Failed to send response via SSE: ${sseError.message}`);
+            // Fallback to POST response if SSE write fails
+            return res.json(response);
+          }
         } else {
-          // Azure AI Agent closes SSE after tools/list, so we MUST return JSON directly
-          console.log(`✅ Tool ${name} executed, returning JSON response (SSE connection may be closed)`);
-          console.log(`📤 Response being sent to agent:`);
-          console.log(`   jsonrpc: ${response.jsonrpc}`);
-          console.log(`   id: ${response.id}`);
-          console.log(`   result.isError: ${result.isError}`);
-          console.log(`   result.content[0].type: ${result.content[0].type}`);
-          console.log(`   result.content[0].text length: ${result.content[0].text.length}`);
-          console.log(`📤 Full response:`, JSON.stringify(response, null, 2));
-          console.log(`📤 Response sent via res.json()`);
+          console.warn(`⚠️ SSE connection ${connectionId} not available or closed, falling back to POST response`);
+          console.log(`   Available connections: ${Array.from(mcpConnections.keys()).join(', ')}`);
           return res.json(response);
         }
         
