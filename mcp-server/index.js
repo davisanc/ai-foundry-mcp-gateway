@@ -250,6 +250,7 @@ app.post('/mcp/message', async (req, res) => {
     if (message.method === 'tools/call') {
       const { name, arguments: args } = message.params;
       console.log(`🔧 Executing tool: ${name}`);
+      console.log(`🔧 Message ID from agent: ${message.id}`);
       console.log(`🔧 Tool arguments:`, JSON.stringify(args, null, 2));
       console.log(`🔧 Available sessions:`, Object.keys(sessions));
       console.log(`🔧 Client wants SSE:`, wantsSSE);
@@ -357,6 +358,14 @@ app.post('/mcp/message', async (req, res) => {
         } else {
           // Azure AI Agent closes SSE after tools/list, so we MUST return JSON directly
           console.log(`✅ Tool ${name} executed, returning JSON response (SSE connection may be closed)`);
+          console.log(`📤 Response being sent to agent:`);
+          console.log(`   jsonrpc: ${response.jsonrpc}`);
+          console.log(`   id: ${response.id}`);
+          console.log(`   result.isError: ${result.isError}`);
+          console.log(`   result.content[0].type: ${result.content[0].type}`);
+          console.log(`   result.content[0].text length: ${result.content[0].text.length}`);
+          console.log(`📤 Full response:`, JSON.stringify(response, null, 2));
+          console.log(`📤 Response sent via res.json()`);
           return res.json(response);
         }
         
