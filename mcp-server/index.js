@@ -1,3 +1,47 @@
+// ============================================================================
+// EMEA AI Security MCP Gateway - Azure AI Foundry Integration
+// ============================================================================
+// 
+// CHANGES FROM API KEY AUTHENTICATION TO MANAGED IDENTITY:
+// 
+// 1. DEPENDENCIES (package.json):
+//    - Added: @azure/identity ^4.0.0 for managed identity support
+//    - Removed: FOUNDRY_API_KEY environment variable (no longer needed)
+//
+// 2. IMPORTS (line 11):
+//    - Added: const { DefaultAzureCredential } = require('@azure/identity');
+//    - This enables automatic token acquisition using webapp's managed identity
+//
+// 3. QUERY ENDPOINT (/session/:sid/query, lines 500-516):
+//    - REMOVED: const apiKey = process.env.FOUNDRY_API_KEY;
+//    - REMOVED: 'api-key': apiKey header
+//    - ADDED: DefaultAzureCredential() to get OAuth token
+//    - ADDED: 'Authorization': `Bearer ${token.token}` header
+//    - Benefits: No API keys in environment, automatic token refresh, secure
+//
+// 4. GITHUB ACTIONS WORKFLOW (.github/workflows/deploy.yml):
+//    - Added step: "Enable Managed Identity on Web App"
+//      - Assigns system-managed identity to Azure App Service
+//    - Added step: "Grant Web App Access to AI Foundry"
+//      - Assigns required Azure roles to the managed identity:
+//        * Azure AI User
+//        * Cognitive Services User
+//        * Cognitive Services OpenAI Contributor
+//    - REMOVED: FOUNDRY_API_KEY from app settings
+//
+// HOW IT WORKS:
+// - When code runs in Azure, DefaultAzureCredential automatically uses the
+//   webapp's managed identity to acquire an OAuth token
+// - Token is valid for 1 hour and automatically refreshed as needed
+// - No secrets stored in environment variables or key vaults
+// - Azure handles all credential management securely
+//
+// LOCAL TESTING:
+// - Set AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID for local dev
+// - Or use: az login && az account set --subscription <id>
+//
+// ============================================================================
+
 // added debugging options
 
 //test to trigger pipeline
