@@ -162,56 +162,53 @@ jobs:
         az apim api import \
           -g $AZURE_RESOURCE_GROUP \
           -n $APIM_NAME \
-          --path "mcp" \
+          --path "/" \
           --api-id mcp-api \
           --specification-format OpenApi \
           --specification-path ./mcp-server-openapi.yaml \
           --service-url "https://${WEBAPP_NAME}.azurewebsites.net"
     
-    - name: Configure APIM Policy to Remove Subscription Requirement
+    - name: Configure APIM for Public Access
       run: |
-        # Create a policy file that allows unauthenticated access without subscription keys
-        cat > /tmp/api-policy.xml << 'EOF'
-        <policies>
-          <inbound>
-            <rate-limit-by-key calls="100" renewal-period="60" counter-key="@context.Request.IpAddress" />
-          </inbound>
-          <backend>
-            <base />
-          </backend>
-          <outbound>
-            <base />
-          </outbound>
-          <on-error>
-            <base />
-          </on-error>
-        </policies>
-        EOF
+        # Update API to not require subscriptions
+        az rest --method PATCH \
+          --uri "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.ApiManagement/service/$APIM_NAME/apis/mcp-api?api-version=2023-03-01-preview" \
+          --body '{"properties":{"subscriptionRequired":false}}' || true
         
-        # Apply the policy to the API
-        az apim api policy create \
+        # Create a public product (no subscription required)
+        PRODUCT_RESULT=$(az apim product create \
           -g $AZURE_RESOURCE_GROUP \
           -n $APIM_NAME \
-          --api-id mcp-api \
-          --policy @/tmp/api-policy.xml || true
-        
-        # Also set the product to not require subscription
-        # Create a product that doesn't require subscription approval
-        az apim product create \
-          -g $AZURE_RESOURCE_GROUP \
-          -n $APIM_NAME \
-          --product-name "MCP-Public" \
-          --description "MCP API - Public Access" \
-          --legal-terms "None" \
+          --product-name "mcp-public" \
+          --state published \
           --subscription-required false \
-          --approval-required false || true
+          -o json 2>/dev/null || echo '{}')
         
-        # Add the API to the product
-        az apim product api add \
-          -g $AZURE_RESOURCE_GROUP \
-          -n $APIM_NAME \
-          --product-name "MCP-Public" \
-          --api-id mcp-api || true
+        PRODUCT_ID=$(echo "$PRODUCT_RESULT" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+        
+        if [ -z "$PRODUCT_ID" ]; then
+          # If product creation failed, try to find existing public product
+          PRODUCTS=$(az apim product list -g $AZURE_RESOURCE_GROUP -n $APIM_NAME -o json)
+          PRODUCT_ID=$(echo "$PRODUCTS" | grep -o '"name":"[^"]*"' | grep -v "starter\|unlimited\|hugging" | head -1 | cut -d'"' -f4)
+        fi
+        
+        if [ -n "$PRODUCT_ID" ]; then
+          echo "Using product ID: $PRODUCT_ID"
+          
+          # Update product to not require subscription
+          az rest --method PATCH \
+            --uri "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.ApiManagement/service/$APIM_NAME/products/$PRODUCT_ID?api-version=2023-03-01-preview" \
+            --body '{"properties":{"subscriptionRequired":false}}' || true
+          
+          # Add API to product
+          az apim product api add \
+            -g $AZURE_RESOURCE_GROUP \
+            -n $APIM_NAME \
+            --product-id "$PRODUCT_ID" \
+            --api-id mcp-api || true
+        fi
+        
+        echo "✅ APIM configured for public access (no subscription key required)"
 
     # -------------------------------
     # Use existing Azure AI Foundry Project
@@ -260,7 +257,7 @@ jobs:
         echo ""
         echo "🌐 Web App: https://${WEBAPP_NAME}.azurewebsites.net"
         echo "🔌 MCP Endpoint: https://${WEBAPP_NAME}.azurewebsites.net/mcp/sse"
-        echo "🔗 APIM Gateway: https://${APIM_NAME}.azure-api.net/mcp"
+        echo "🔗 APIM Gateway: https://${APIM_NAME}.azure-api.net"
         echo "🤖 AI Agent: ${AI_AGENT_NAME}"
         echo "📊 AI Project: ${AI_PROJECT_NAME}"
         echo ""
@@ -268,12 +265,12 @@ jobs:
           echo "🆔 Agent ID: $(cat agent_id.txt)"
         fi
         echo ""
-        echo "📝 APIM API Endpoints:"
-        echo "  GET  https://${APIM_NAME}.azure-api.net/mcp/"
-        echo "  GET  https://${APIM_NAME}.azure-api.net/mcp/healthz"
-        echo "  POST https://${APIM_NAME}.azure-api.net/mcp/session"
-        echo "  POST https://${APIM_NAME}.azure-api.net/mcp/session/{sid}/upload"
-        echo "  GET  https://${APIM_NAME}.azure-api.net/mcp/mcp/sse"
+        echo "📝 APIM API Endpoints (no subscription key required):"
+        echo "  GET  https://${APIM_NAME}.azure-api.net/"
+        echo "  GET  https://${APIM_NAME}.azure-api.net/healthz"
+        echo "  POST https://${APIM_NAME}.azure-api.net/session"
+        echo "  POST https://${APIM_NAME}.azure-api.net/session/{sid}/upload"
+        echo "  GET  https://${APIM_NAME}.azure-api.net/mcp/sse"
         echo ""
         echo "Next steps:"
         echo "1. Visit the web app to upload documents"
