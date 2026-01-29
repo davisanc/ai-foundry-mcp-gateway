@@ -75,14 +75,58 @@ jobs:
           -n $WEBAPP_NAME \
           --runtime "NODE:22-lts"
 
+    - name: Enable Managed Identity on Web App
+      run: |
+        az webapp identity assign \
+          -g $AZURE_RESOURCE_GROUP \
+          -n $WEBAPP_NAME \
+          --identities [system]
+        
+        # Get the Principal ID for role assignment
+        PRINCIPAL_ID=$(az webapp identity show \
+          -g $AZURE_RESOURCE_GROUP \
+          -n $WEBAPP_NAME \
+          --query principalId --output tsv)
+        
+        echo "PRINCIPAL_ID=${PRINCIPAL_ID}" >> $GITHUB_ENV
+        echo "✅ Managed Identity enabled. Principal ID: ${PRINCIPAL_ID}"
+
+    - name: Grant Web App Access to AI Foundry
+      run: |
+        # Get the AI resource ID
+        AI_RESOURCE_ID=$(az resource show \
+          -g $AI_PROJECT_RESOURCE_GROUP \
+          -n $AI_PROJECT_NAME \
+          --resource-type "Microsoft.CognitiveServices/accounts" \
+          --query id --output tsv)
+        
+        if [ -z "$AI_RESOURCE_ID" ]; then
+          echo "❌ Could not find AI resource: $AI_PROJECT_NAME"
+          exit 1
+        fi
+        
+        # Assign required roles to the web app's managed identity
+        ROLES=("Azure AI User" "Cognitive Services User" "Cognitive Services OpenAI Contributor")
+        
+        for ROLE in "${ROLES[@]}"; do
+          echo "Assigning role: $ROLE"
+          az role assignment create \
+            --assignee-object-id $PRINCIPAL_ID \
+            --assignee-principal-type ServicePrincipal \
+            --role "$ROLE" \
+            --scope "$AI_RESOURCE_ID" \
+            --only-show-errors 2>/dev/null || echo "⚠️ Role may already be assigned"
+        done
+        
+        echo "✅ Web app has access to AI Foundry resource"
+
     - name: Set MCP server App Settings
       run: |
         az webapp config appsettings set \
           -g $AZURE_RESOURCE_GROUP \
           -n $WEBAPP_NAME \
           --settings \
-            FOUNDRY_ENDPOINT=${{ secrets.FOUNDRY_ENDPOINT }} \
-            FOUNDRY_API_KEY=${{ secrets.FOUNDRY_API_KEY }}
+            FOUNDRY_ENDPOINT=${{ secrets.FOUNDRY_ENDPOINT }}
 
     - name: Configure App Service for SSE/MCP Support
       run: |
@@ -109,22 +153,65 @@ jobs:
           --resource-group $AZURE_RESOURCE_GROUP \
           --name $APIM_NAME \
           --location $LOCATION \
+          --sku-name Developer \
           --publisher-email $APIM_PUBLISHER_EMAIL \
-          --publisher-name "$APIM_PUBLISHER_NAME" \
-
-    
-
+          --publisher-name "$APIM_PUBLISHER_NAME"
 
     - name: Import MCP API into APIM
       run: |
         az apim api import \
           -g $AZURE_RESOURCE_GROUP \
           -n $APIM_NAME \
-          --path "" \
+          --path "mcp" \
           --api-id mcp-api \
           --specification-format OpenApi \
           --specification-path ./mcp-server-openapi.yaml \
           --service-url "https://${WEBAPP_NAME}.azurewebsites.net"
+    
+    - name: Configure APIM Policy to Remove Subscription Requirement
+      run: |
+        # Create a policy file that allows unauthenticated access without subscription keys
+        cat > /tmp/api-policy.xml << 'EOF'
+        <policies>
+          <inbound>
+            <rate-limit-by-key calls="100" renewal-period="60" counter-key="@context.Request.IpAddress" />
+          </inbound>
+          <backend>
+            <base />
+          </backend>
+          <outbound>
+            <base />
+          </outbound>
+          <on-error>
+            <base />
+          </on-error>
+        </policies>
+        EOF
+        
+        # Apply the policy to the API
+        az apim api policy create \
+          -g $AZURE_RESOURCE_GROUP \
+          -n $APIM_NAME \
+          --api-id mcp-api \
+          --policy @/tmp/api-policy.xml || true
+        
+        # Also set the product to not require subscription
+        # Create a product that doesn't require subscription approval
+        az apim product create \
+          -g $AZURE_RESOURCE_GROUP \
+          -n $APIM_NAME \
+          --product-name "MCP-Public" \
+          --description "MCP API - Public Access" \
+          --legal-terms "None" \
+          --subscription-required false \
+          --approval-required false || true
+        
+        # Add the API to the product
+        az apim product api add \
+          -g $AZURE_RESOURCE_GROUP \
+          -n $APIM_NAME \
+          --product-name "MCP-Public" \
+          --api-id mcp-api || true
 
     # -------------------------------
     # Use existing Azure AI Foundry Project
@@ -173,12 +260,20 @@ jobs:
         echo ""
         echo "🌐 Web App: https://${WEBAPP_NAME}.azurewebsites.net"
         echo "🔌 MCP Endpoint: https://${WEBAPP_NAME}.azurewebsites.net/mcp/sse"
+        echo "🔗 APIM Gateway: https://${APIM_NAME}.azure-api.net/mcp"
         echo "🤖 AI Agent: ${AI_AGENT_NAME}"
         echo "📊 AI Project: ${AI_PROJECT_NAME}"
         echo ""
         if [ -f agent_id.txt ]; then
           echo "🆔 Agent ID: $(cat agent_id.txt)"
         fi
+        echo ""
+        echo "📝 APIM API Endpoints:"
+        echo "  GET  https://${APIM_NAME}.azure-api.net/mcp/"
+        echo "  GET  https://${APIM_NAME}.azure-api.net/mcp/healthz"
+        echo "  POST https://${APIM_NAME}.azure-api.net/mcp/session"
+        echo "  POST https://${APIM_NAME}.azure-api.net/mcp/session/{sid}/upload"
+        echo "  GET  https://${APIM_NAME}.azure-api.net/mcp/mcp/sse"
         echo ""
         echo "Next steps:"
         echo "1. Visit the web app to upload documents"

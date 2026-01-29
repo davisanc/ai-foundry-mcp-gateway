@@ -8,6 +8,7 @@ const express = require('express');
 const fetch = require('node-fetch');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
+const { DefaultAzureCredential } = require('@azure/identity');
 const { createMCPServer } = require('./mcp-handler');
 const { SSEServerTransport } = require('@modelcontextprotocol/sdk/server/sse.js');
 // ...existing code...
@@ -487,22 +488,27 @@ app.post('/session/:sid/query', async (req, res) => {
     : `Summarize the following document:\n\n${doc.text}\n\nSummary:`;
 
   const endpoint = process.env.FOUNDRY_ENDPOINT;
-  const apiKey = process.env.FOUNDRY_API_KEY;
 
   // Log everything for debugging
   console.log("🔹 Sending request to Azure GPT-4o-mini...");
   console.log("Endpoint:", endpoint);
-  console.log("Headers:", { "api-key": apiKey ? apiKey.substring(0, 10) + "..." : '[NO KEY]' });
-  console.log("Request body:", JSON.stringify({
-    messages: [{ role: "user", content: prompt }],
-    max_tokens: 300
-  }, null, 2));
 
   try {
+    // Get token using managed identity
+    console.log("🔑 Acquiring token using managed identity...");
+    const credential = new DefaultAzureCredential();
+    const token = await credential.getToken('https://cognitiveservices.azure.com/.default');
+    console.log("✅ Token acquired successfully");
+
+    console.log("Request body:", JSON.stringify({
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 300
+    }, null, 2));
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'api-key': apiKey,
+        'Authorization': `Bearer ${token.token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
