@@ -62,15 +62,15 @@ jobs:
       run: |
         PLAN_EXISTS=$(az appservice plan show -g $AZURE_RESOURCE_GROUP -n $APP_SERVICE_PLAN --query "id" -o tsv 2>/dev/null)
         if [ -z "$PLAN_EXISTS" ]; then
-          echo "Creating new App Service Plan: $APP_SERVICE_PLAN in $APP_SERVICE_LOCATION"
-          az appservice plan create \
-            -g $AZURE_RESOURCE_GROUP \
-            -n $APP_SERVICE_PLAN \
-            -l $APP_SERVICE_LOCATION \
-            --sku B1 --is-linux
-          echo "✅ App Service Plan created"
-        else
-          echo "✅ App Service Plan already exists: $PLAN_EXISTS"
+         echo "Creating App Service Plan..."
+            az appservice plan create \
+              -g $AZURE_RESOURCE_GROUP \
+              -n $APP_SERVICE_PLAN \
+ 
+              --sku B1 --is-linux
+ 
+          else
+            echo "App Service Plan already exists, skipping creation"
         fi
 
     # -------------------------------
