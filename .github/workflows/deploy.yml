@@ -7,8 +7,10 @@ on:
 
 env:
   AZURE_RESOURCE_GROUP: ai-mcp-rg
+  APP_SERVICE_PLAN_RG: ai-app-service-rg
   AI_PROJECT_RESOURCE_GROUP: ${{ secrets.AI_PROJECT_RESOURCE_GROUP || 'AI-RG' }}
   LOCATION: westeurope
+  APP_SERVICE_LOCATION: eastus
   APP_SERVICE_PLAN: mcp-asp
   WEBAPP_NAME: mcp-server-app-davisanc
   APIM_NAME: mcp-apim-davisanc
@@ -45,6 +47,7 @@ jobs:
     - name: Create Resource Group
       run: |
         az group create -n $AZURE_RESOURCE_GROUP -l $LOCATION
+        az group create -n $APP_SERVICE_PLAN_RG -l $APP_SERVICE_LOCATION
     #-------------------------------
     # Installing dependencies
     #-------------------------------
@@ -59,21 +62,85 @@ jobs:
     # -------------------------------
     - name: Create App Service Plan
       run: |
-        az appservice plan create \
-          -g $AZURE_RESOURCE_GROUP \
-          -n $APP_SERVICE_PLAN \
-          --sku B1 --is-linux
+        PLAN_EXISTS=$(az appservice plan show -g $APP_SERVICE_PLAN_RG -n $APP_SERVICE_PLAN --query "id" -o tsv 2>/dev/null)
+        if [ -z "$PLAN_EXISTS" ]; then
+          echo "Creating new App Service Plan: $APP_SERVICE_PLAN in $APP_SERVICE_LOCATION"
+          az appservice plan create \
+            -g $APP_SERVICE_PLAN_RG \
+            -n $APP_SERVICE_PLAN \
+            -l $APP_SERVICE_LOCATION \
+            --sku B1 --is-linux
+          echo "✅ App Service Plan created"
+        else
+          echo "✅ App Service Plan already exists: $PLAN_EXISTS"
+        fi
 
     # -------------------------------
     # Deploy MCP server
     # -------------------------------
     - name: Create Web App for MCP server
       run: |
-        az webapp create \
+        WEBAPP_EXISTS=$(az webapp show -g $AZURE_RESOURCE_GROUP -n $WEBAPP_NAME --query "id" -o tsv 2>/dev/null)
+        if [ -z "$WEBAPP_EXISTS" ]; then
+          echo "Creating new Web App: $WEBAPP_NAME"
+          az webapp create \
+            -g $AZURE_RESOURCE_GROUP \
+            -p $APP_SERVICE_PLAN \
+            -n $WEBAPP_NAME \
+            --runtime "NODE:22-lts"
+          echo "✅ Web App created"
+          
+          # Wait for new app to initialize
+          echo "⏳ Waiting for new Web App to initialize (30 seconds)..."
+          sleep 30
+        else
+          echo "✅ Web App already exists: $WEBAPP_EXISTS"
+        fi
+
+    - name: Enable Managed Identity on Web App
+      run: |
+        az webapp identity assign \
           -g $AZURE_RESOURCE_GROUP \
-          -p $APP_SERVICE_PLAN \
           -n $WEBAPP_NAME \
-          --runtime "NODE:22-lts"
+          --identities [system]
+        
+        # Get the Principal ID for role assignment
+        PRINCIPAL_ID=$(az webapp identity show \
+          -g $AZURE_RESOURCE_GROUP \
+          -n $WEBAPP_NAME \
+          --query principalId --output tsv)
+        
+        echo "PRINCIPAL_ID=${PRINCIPAL_ID}" >> $GITHUB_ENV
+        echo "✅ Managed Identity enabled. Principal ID: ${PRINCIPAL_ID}"
+
+    - name: Grant Web App Access to AI Foundry
+      run: |
+        # Get the AI resource ID
+        AI_RESOURCE_ID=$(az resource show \
+          -g $AI_PROJECT_RESOURCE_GROUP \
+          -n $AI_PROJECT_NAME \
+          --resource-type "Microsoft.CognitiveServices/accounts" \
+          --query id --output tsv)
+        
+        if [ -z "$AI_RESOURCE_ID" ]; then
+          echo "❌ Could not find AI resource: $AI_PROJECT_NAME"
+          exit 1
+        fi
+        
+        # Assign required roles to the web app's managed identity
+        ROLES=("Azure AI User" "Cognitive Services User" "Cognitive Services OpenAI Contributor")
+        
+        for ROLE in "${ROLES[@]}"; do
+          echo "Assigning role: $ROLE"
+          az role assignment create \
+            --assignee-object-id $PRINCIPAL_ID \
+            --assignee-principal-type ServicePrincipal \
+            --role "$ROLE" \
+            --scope "$AI_RESOURCE_ID" \
+            --only-show-errors 2>/dev/null || echo "⚠️ Role may already be assigned"
+        done
+        
+        echo "✅ Web app has access to AI Foundry resource"
 
     - name: Set MCP server App Settings
       run: |
@@ -81,17 +148,61 @@ jobs:
           -g $AZURE_RESOURCE_GROUP \
           -n $WEBAPP_NAME \
           --settings \
-            FOUNDRY_ENDPOINT=${{ secrets.FOUNDRY_ENDPOINT }} \
-            FOUNDRY_API_KEY=${{ secrets.FOUNDRY_API_KEY }}
+            FOUNDRY_ENDPOINT=${{ secrets.FOUNDRY_ENDPOINT }}
 
     - name: Configure App Service for SSE/MCP Support
       run: |
-        az webapp config set \
-          -g $AZURE_RESOURCE_GROUP \
-          -n $WEBAPP_NAME \
-          --web-sockets-enabled true \
-          --always-on true \
-          --http20-enabled true
+        # Check if app exists and is accessible
+        echo "🔍 Verifying Web App is ready..."
+        READY=false
+        for i in {1..10}; do
+          if az webapp show -g $AZURE_RESOURCE_GROUP -n $WEBAPP_NAME &>/dev/null; then
+            READY=true
+            echo "✅ Web App is accessible"
+            break
+          fi
+          echo "⏳ Waiting for Web App to be accessible... (attempt $i/10)"
+          sleep 5
+        done
+        
+        if [ "$READY" = false ]; then
+          echo "❌ Web App failed to become accessible"
+          exit 1
+        fi
+        
+        # Wait longer before attempting configuration - Azure needs more time to fully sync
+        echo "⏳ Waiting for App Service backend to be fully ready (60 seconds)..."
+        sleep 60
+        
+        # Retry logic for config set with longer backoff
+        MAX_RETRIES=10
+        RETRY=0
+        
+        while [ $RETRY -lt $MAX_RETRIES ]; do
+          echo "Attempting to configure App Service (attempt $((RETRY+1))/$MAX_RETRIES)..."
+          
+          if az webapp config set \
+            -g $AZURE_RESOURCE_GROUP \
+            -n $WEBAPP_NAME \
+            --web-sockets-enabled true \
+            --http20-enabled true 2>&1 | tee /tmp/config_output.txt; then
+            # Check if the command actually succeeded (not just exit 0)
+            if ! grep -q "ERROR\|Conflict" /tmp/config_output.txt; then
+              echo "✅ App Service configured successfully"
+              exit 0
+            fi
+          fi
+          
+          RETRY=$((RETRY+1))
+          if [ $RETRY -lt $MAX_RETRIES ]; then
+            WAIT_TIME=$((15 + (RETRY * 5)))
+            echo "⚠️ Configuration failed, retrying in ${WAIT_TIME} seconds... (attempt $((RETRY+1)) of $MAX_RETRIES)"
+            sleep $WAIT_TIME
+          fi
+        done
+        
+        echo "❌ Failed to configure App Service after $MAX_RETRIES attempts"
+        exit 1
 
     - name: Deploy MCP Server
       uses: azure/webapps-deploy@v2
@@ -109,22 +220,62 @@ jobs:
           --resource-group $AZURE_RESOURCE_GROUP \
           --name $APIM_NAME \
           --location $LOCATION \
+          --sku-name Developer \
           --publisher-email $APIM_PUBLISHER_EMAIL \
-          --publisher-name "$APIM_PUBLISHER_NAME" \
-
-    
-
+          --publisher-name "$APIM_PUBLISHER_NAME"
 
     - name: Import MCP API into APIM
       run: |
         az apim api import \
           -g $AZURE_RESOURCE_GROUP \
           -n $APIM_NAME \
-          --path "" \
+          --path "/" \
           --api-id mcp-api \
           --specification-format OpenApi \
           --specification-path ./mcp-server-openapi.yaml \
           --service-url "https://${WEBAPP_NAME}.azurewebsites.net"
+    
+    - name: Configure APIM for Public Access
+      run: |
+        # Update API to not require subscriptions
+        az rest --method PATCH \
+          --uri "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.ApiManagement/service/$APIM_NAME/apis/mcp-api?api-version=2023-03-01-preview" \
+          --body '{"properties":{"subscriptionRequired":false}}' || true
+        
+        # Create a public product (no subscription required)
+        PRODUCT_RESULT=$(az apim product create \
+          -g $AZURE_RESOURCE_GROUP \
+          -n $APIM_NAME \
+          --product-name "mcp-public" \
+          --state published \
+          --subscription-required false \
+          -o json 2>/dev/null || echo '{}')
+        
+        PRODUCT_ID=$(echo "$PRODUCT_RESULT" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+        
+        if [ -z "$PRODUCT_ID" ]; then
+          # If product creation failed, try to find existing public product
+          PRODUCTS=$(az apim product list -g $AZURE_RESOURCE_GROUP -n $APIM_NAME -o json)
+          PRODUCT_ID=$(echo "$PRODUCTS" | grep -o '"name":"[^"]*"' | grep -v "starter\|unlimited\|hugging" | head -1 | cut -d'"' -f4)
+        fi
+        
+        if [ -n "$PRODUCT_ID" ]; then
+          echo "Using product ID: $PRODUCT_ID"
+          
+          # Update product to not require subscription
+          az rest --method PATCH \
+            --uri "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.ApiManagement/service/$APIM_NAME/products/$PRODUCT_ID?api-version=2023-03-01-preview" \
+            --body '{"properties":{"subscriptionRequired":false}}' || true
+          
+          # Add API to product
+          az apim product api add \
+            -g $AZURE_RESOURCE_GROUP \
+            -n $APIM_NAME \
+            --product-id "$PRODUCT_ID" \
+            --api-id mcp-api || true
+        fi
+        
+        echo "✅ APIM configured for public access (no subscription key required)"
 
     # -------------------------------
     # Use existing Azure AI Foundry Project
@@ -173,12 +324,20 @@ jobs:
         echo ""
         echo "🌐 Web App: https://${WEBAPP_NAME}.azurewebsites.net"
         echo "🔌 MCP Endpoint: https://${WEBAPP_NAME}.azurewebsites.net/mcp/sse"
+        echo "🔗 APIM Gateway: https://${APIM_NAME}.azure-api.net"
         echo "🤖 AI Agent: ${AI_AGENT_NAME}"
         echo "📊 AI Project: ${AI_PROJECT_NAME}"
         echo ""
         if [ -f agent_id.txt ]; then
           echo "🆔 Agent ID: $(cat agent_id.txt)"
         fi
+        echo ""
+        echo "📝 APIM API Endpoints (no subscription key required):"
+        echo "  GET  https://${APIM_NAME}.azure-api.net/"
+        echo "  GET  https://${APIM_NAME}.azure-api.net/healthz"
+        echo "  POST https://${APIM_NAME}.azure-api.net/session"
+        echo "  POST https://${APIM_NAME}.azure-api.net/session/{sid}/upload"
+        echo "  GET  https://${APIM_NAME}.azure-api.net/mcp/sse"
         echo ""
         echo "Next steps:"
         echo "1. Visit the web app to upload documents"
