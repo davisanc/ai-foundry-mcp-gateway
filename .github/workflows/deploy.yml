@@ -76,11 +76,22 @@ jobs:
     # -------------------------------
     - name: Create Web App for MCP server
       run: |
-        az webapp create \
-          -g $AZURE_RESOURCE_GROUP \
-          -p $APP_SERVICE_PLAN \
-          -n $WEBAPP_NAME \
-          --runtime "NODE:22-lts"
+        WEBAPP_EXISTS=$(az webapp show -g $AZURE_RESOURCE_GROUP -n $WEBAPP_NAME --query "id" -o tsv 2>/dev/null)
+        if [ -z "$WEBAPP_EXISTS" ]; then
+          echo "Creating new Web App: $WEBAPP_NAME"
+          az webapp create \
+            -g $AZURE_RESOURCE_GROUP \
+            -p $APP_SERVICE_PLAN \
+            -n $WEBAPP_NAME \
+            --runtime "NODE:22-lts"
+          echo "✅ Web App created"
+          
+          # Wait for new app to initialize
+          echo "⏳ Waiting for new Web App to initialize (30 seconds)..."
+          sleep 30
+        else
+          echo "✅ Web App already exists: $WEBAPP_EXISTS"
+        fi
 
     - name: Enable Managed Identity on Web App
       run: |
@@ -137,12 +148,30 @@ jobs:
 
     - name: Configure App Service for SSE/MCP Support
       run: |
-        # Wait for webapp to be ready
-        echo "⏳ Waiting for App Service to initialize..."
-        sleep 15
+        # Check if app exists and is accessible
+        echo "🔍 Verifying Web App is ready..."
+        READY=false
+        for i in {1..10}; do
+          if az webapp show -g $AZURE_RESOURCE_GROUP -n $WEBAPP_NAME &>/dev/null; then
+            READY=true
+            echo "✅ Web App is accessible"
+            break
+          fi
+          echo "⏳ Waiting for Web App to be accessible... (attempt $i/10)"
+          sleep 5
+        done
+        
+        if [ "$READY" = false ]; then
+          echo "❌ Web App failed to become accessible"
+          exit 1
+        fi
+        
+        # Wait before attempting configuration
+        echo "⏳ Waiting for App Service backend to be ready (30 seconds)..."
+        sleep 30
         
         # Retry logic for config set
-        MAX_RETRIES=5
+        MAX_RETRIES=8
         RETRY=0
         
         while [ $RETRY -lt $MAX_RETRIES ]; do
@@ -153,14 +182,14 @@ jobs:
             -n $WEBAPP_NAME \
             --web-sockets-enabled true \
             --always-on true \
-            --http20-enabled true; then
+            --http20-enabled true 2>&1; then
             echo "✅ App Service configured successfully"
             exit 0
           else
             RETRY=$((RETRY+1))
             if [ $RETRY -lt $MAX_RETRIES ]; then
-              echo "⚠️ Configuration failed, retrying in 10 seconds..."
-              sleep 10
+              echo "⚠️ Configuration failed, retrying in 15 seconds... (attempt $((RETRY+1)) of $MAX_RETRIES)"
+              sleep 15
             fi
           fi
         done
