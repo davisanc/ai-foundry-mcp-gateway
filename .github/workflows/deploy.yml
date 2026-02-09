@@ -105,6 +105,7 @@ jobs:
         echo "✅ Managed Identity enabled. Principal ID: ${PRINCIPAL_ID}"
 
     - name: Grant Web App Access to AI Foundry (Managed Identity)
+      continue-on-error: true
       run: |
         echo "Granting managed identity access to AI Foundry..."
         
@@ -146,7 +147,7 @@ jobs:
             az role assignment create \
               --assignee "$PRINCIPAL_ID" \
               --role "$ROLE" \
-              --scope "$RESOURCE_ID"
+              --scope "$RESOURCE_ID" || echo "  ⚠️  Could not assign role (requires manual assignment)"
             echo "  ✅ Role assigned"
           fi
         done
@@ -154,6 +155,31 @@ jobs:
         echo "✅ Managed identity access granted. Waiting for propagation..."
         sleep 60
         echo "✅ Role propagation complete"
+    
+    - name: Manual Role Assignment Instructions
+      if: failure()
+      run: |
+        echo "================================================"
+        echo "⚠️  Manual Role Assignment Required"
+        echo "================================================"
+        echo ""
+        echo "GitHub Actions doesn't have permission to assign roles."
+        echo "You must assign these roles manually in the Azure Portal:"
+        echo ""
+        echo "1. Go to Azure Portal"
+        echo "2. Navigate to: ${AI_PROJECT_NAME}"
+        echo "3. Click: Access Control (IAM)"
+        echo "4. Click: Add → Add role assignment"
+        echo "5. Assign the following roles to the web app managed identity:"
+        echo "   - Azure AI User"
+        echo "   - Cognitive Services User"
+        echo "   - Cognitive Services OpenAI Contributor"
+        echo ""
+        echo "6. Search for Principal ID: $(az webapp identity show -g $AZURE_RESOURCE_GROUP -n $WEBAPP_NAME --query principalId -o tsv)"
+        echo "7. Save and wait 5 minutes for propagation"
+        echo ""
+        echo "After assigning roles, re-run this workflow."
+        echo "================================================"
 
     - name: Set MCP server App Settings
       run: |
