@@ -142,7 +142,7 @@ jobs:
         echo "✅ Found resource: $RESOURCE_ID"
         
         # Required roles for managed identity access to Foundry
-        ROLES=("Cognitive Services OpenAI Contributor" "Azure AI User")
+        ROLES=("Azure AI User" "Cognitive Services User" "Cognitive Services OpenAI Contributor")
         
         for ROLE in "${ROLES[@]}"; do
           echo ""
@@ -160,17 +160,17 @@ jobs:
             echo "   Assignment ID: $EXISTING"
           else
             echo "Assigning role: $ROLE to web app..."
-            RESULT=$(az role assignment create \
+            az role assignment create \
               --assignee-object-id "$PRINCIPAL_ID" \
               --role "$ROLE" \
               --scope "$RESOURCE_ID" \
-              --output json 2>&1)
+              --output json 2>/dev/null
             
-            if echo "$RESULT" | grep -q "roleDefinitionId"; then
+            if [ $? -eq 0 ]; then
               echo "✅ Successfully assigned role: $ROLE"
             else
-              echo "⚠️ Role assignment may have failed. Details:"
-              echo "$RESULT" | head -5
+              echo "⚠️ Role assignment may have failed for: $ROLE"
+              echo "   Continuing with other roles..."
             fi
           fi
         done
