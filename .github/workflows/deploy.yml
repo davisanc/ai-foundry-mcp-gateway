@@ -105,7 +105,6 @@ jobs:
         echo "✅ Managed Identity enabled. Principal ID: ${PRINCIPAL_ID}"
 
     - name: Grant Web App Access to AI Foundry (Managed Identity)
-      continue-on-error: true
       run: |
         echo "Granting managed identity access to AI Foundry..."
         
@@ -134,7 +133,7 @@ jobs:
         for ROLE in "Azure AI User" "Cognitive Services User" "Cognitive Services OpenAI Contributor"; do
           echo "  Checking role: $ROLE"
           EXISTING=$(az role assignment list \
-            --assignee-object-id "$PRINCIPAL_ID" \
+            --assignee "$PRINCIPAL_ID" \
             --scope "$RESOURCE_ID" \
             --role "$ROLE" \
             --query "[0].id" \
@@ -145,10 +144,9 @@ jobs:
           else
             echo "  Assigning role: $ROLE"
             az role assignment create \
-              --assignee-object-id "$PRINCIPAL_ID" \
-              --assignee-principal-type ServicePrincipal \
+              --assignee "$PRINCIPAL_ID" \
               --role "$ROLE" \
-              --scope "$RESOURCE_ID" 2>&1 | grep -v "WARNING:" || true
+              --scope "$RESOURCE_ID"
             echo "  ✅ Role assigned"
           fi
         done
@@ -156,24 +154,6 @@ jobs:
         echo "✅ Managed identity access granted. Waiting for propagation..."
         sleep 60
         echo "✅ Role propagation complete"
-        
-    - name: Verify Managed Identity Roles
-      continue-on-error: true
-      run: |
-        echo "Verifying role assignments for managed identity..."
-        PRINCIPAL_ID=${{ env.PRINCIPAL_ID }}
-        RESOURCE_ID=$(az resource show \
-          --name "$AI_PROJECT_NAME" \
-          --resource-group "$AI_PROJECT_RESOURCE_GROUP" \
-          --resource-type "Microsoft.CognitiveServices/accounts" \
-          --query id \
-          --output tsv)
-        
-        echo "Current role assignments:"
-        az role assignment list \
-          --assignee-object-id "$PRINCIPAL_ID" \
-          --scope "$RESOURCE_ID" \
-          -o table
 
     - name: Set MCP server App Settings
       run: |
