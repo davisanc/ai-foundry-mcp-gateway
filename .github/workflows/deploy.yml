@@ -23,14 +23,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ github.ref }}
 
-    # -------------------------------
-    # Upgrade Azure CLI to latest version
-    # -------------------------------
     - name: Upgrade Azure CLI
       run: |
         curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      continue-on-error: true
 
     # -------------------------------
     # Azure login
