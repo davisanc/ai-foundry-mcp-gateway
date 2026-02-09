@@ -132,8 +132,11 @@ mcp-server/
 
 **Environment Variables:**
 - `FOUNDRY_ENDPOINT` - Azure AI Foundry API endpoint
-- `FOUNDRY_API_KEY` - API key for authentication
 - `PORT` - Server port (default: 3000)
+
+**Authentication:**
+- Uses system-assigned managed identity (no API keys needed)
+- Automatically acquires Azure tokens via `@azure/identity`
 
 ### 2. Azure API Management (APIM)
 
@@ -164,7 +167,8 @@ Subscription Keys: Optional (can be disabled)
 
 **Integration:**
 - REST API calls via `node-fetch`
-- Authentication via API key
+- Authentication via managed identity (Azure SDK)
+- Acquires bearer tokens automatically
 - Request format: OpenAI-compatible chat completions
 
 ### 4. Document Store (In-Memory)
@@ -549,13 +553,13 @@ Returns:
 **Azure Web App Settings:**
 ```
 FOUNDRY_ENDPOINT=https://[your-project].openai.azure.com/openai/deployments/[model]/chat/completions?api-version=2024-08-01-preview
-FOUNDRY_API_KEY=[your-api-key]
-PORT=3000
 ```
 
-**Configured via:**
-- Azure Portal → Web App → Configuration → Application Settings
-- Or GitHub Secrets for CI/CD
+**Authentication:**
+- Web App has system-assigned managed identity
+- RBAC roles assigned: `Cognitive Services OpenAI Contributor`, `Azure AI User`
+- No API keys stored in configuration
+- Tokens acquired automatically via Azure SDK
 
 ---
 
@@ -567,15 +571,21 @@ PORT=3000
    - All traffic encrypted via TLS
    - Azure-managed certificates
 
-2. **API Keys**
-   - Azure AI Foundry: API key authentication
-   - APIM: Optional subscription keys
+2. **Managed Identity Authentication**
+   - No API keys stored in configuration
+   - System-assigned identity for web app
+   - Automatic token acquisition via Azure SDK
 
-3. **CORS**
+3. **RBAC (Role-Based Access Control)**
+   - Web app can only access Foundry resource it has roles for
+   - Roles: `Cognitive Services OpenAI Contributor`, `Azure AI User`
+   - Credentials never exposed in logs or configuration
+
+4. **CORS**
    - Configured in Express server
    - Controls which origins can access API
 
-4. **Input Validation**
+5. **Input Validation**
    - File type restrictions (TXT, CSV only)
    - File size limits (10MB max)
 
@@ -594,6 +604,26 @@ PORT=3000
 3. **Session Management**
    - No expiration policy
    - Potential memory exhaustion
+
+### Managed Identity Security Benefits
+
+✅ **Advantages over API Keys:**
+
+1. **No Secrets in Code**
+   - Credentials not stored in configuration files or code
+   - Reduces exposure surface
+
+2. **Automatic Token Rotation**
+   - Azure manages token lifecycle
+   - No manual key rotation needed
+
+3. **Auditable Access**
+   - All Foundry access logged to Azure Activity Log
+   - RBAC assignments tracked and auditable
+
+4. **Least Privilege**
+   - Web app only has access to Foundry resource
+   - Roles limited to specific operations needed
 
 ### Recommended Enhancements
 

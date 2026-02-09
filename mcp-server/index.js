@@ -10,9 +10,21 @@ const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const { createMCPServer } = require('./mcp-handler');
 const { SSEServerTransport } = require('@modelcontextprotocol/sdk/server/sse.js');
+const { DefaultAzureCredential } = require('@azure/identity');
 // ...existing code...
 
 const app = express();
+
+// Initialize Azure credential (uses managed identity when running in Azure)
+let credentials = null;
+
+try {
+  credentials = new DefaultAzureCredential();
+  console.log("✅ Azure credentials initialized (Managed Identity mode)");
+} catch (err) {
+  console.error("⚠️ Could not initialize managed identity credentials:", err.message);
+  console.log("  Make sure system-assigned managed identity is enabled on the web app");
+}
 
 // Configure multer for file uploads
 const upload = multer({ 
@@ -487,22 +499,44 @@ app.post('/session/:sid/query', async (req, res) => {
     : `Summarize the following document:\n\n${doc.text}\n\nSummary:`;
 
   const endpoint = process.env.FOUNDRY_ENDPOINT;
-  const apiKey = process.env.FOUNDRY_API_KEY;
 
-  // Log everything for debugging
-  console.log("🔹 Sending request to Azure GPT-4o-mini...");
+  // Validate required configuration
+  if (!endpoint) {
+    console.error("❌ FOUNDRY_ENDPOINT not configured");
+    return res.status(500).json({ error: "Foundry endpoint not configured" });
+  }
+  
+  if (!credentials) {
+    console.error("❌ Azure managed identity credentials not initialized");
+    return res.status(500).json({ error: "Azure authentication not available" });
+  }
+
+  // Log request details
+  console.log("🔹 Sending request to Azure GPT-4o-mini (via Managed Identity)...");
   console.log("Endpoint:", endpoint);
-  console.log("Headers:", { "api-key": apiKey ? apiKey.substring(0, 10) + "..." : '[NO KEY]' });
   console.log("Request body:", JSON.stringify({
     messages: [{ role: "user", content: prompt }],
     max_tokens: 300
   }, null, 2));
 
   try {
+    // Get access token for Azure Cognitive Services
+    console.log("Acquiring access token from managed identity...");
+    const tokenResponse = await credentials.getToken(
+      "https://cognitiveservices.azure.com/.default"
+    );
+    
+    if (!tokenResponse || !tokenResponse.token) {
+      console.error("❌ Failed to acquire access token");
+      return res.status(500).json({ error: "Failed to authenticate with Azure" });
+    }
+    
+    console.log("✅ Access token acquired successfully");
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'api-key': apiKey,
+        'Authorization': `Bearer ${tokenResponse.token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -510,6 +544,15 @@ app.post('/session/:sid/query', async (req, res) => {
         max_tokens: 300
       })
     });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Foundry API error (${response.status}):`, errorText);
+      return res.status(response.status).json({ 
+        error: `Foundry API error: ${response.status}`,
+        details: errorText.substring(0, 200)
+      });
+    }
 
     const data = await response.json();
 
