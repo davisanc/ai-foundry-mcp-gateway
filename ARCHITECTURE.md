@@ -137,7 +137,7 @@ mcp-server/
 
 ### 2. Azure API Management (APIM)
 
-**Instance Name:** `mcp-apim-davisanc`
+**Instance Name:** `mcp-apim-davisancv2`
 
 **Purpose:**
 - Acts as a reverse proxy
@@ -147,7 +147,7 @@ mcp-server/
 
 **Configuration:**
 ```yaml
-Name: mcp-apim-davisanc
+Name: mcp-apim-davisancv2
 Tier: Consumption
 Backend: mcp-server-app-davisanc.azurewebsites.net
 Subscription Keys: Optional (can be disabled)
@@ -541,7 +541,7 @@ Returns:
 |----------|------|------|---------|
 | Resource Group | `ai-mcp-rg` | Container | Groups all resources |
 | Web App | `mcp-server-app-davisanc` | App Service | Hosts Node.js application |
-| APIM | `mcp-apim-davisanc` | API Management | API gateway |
+| APIM | `mcp-apim-davisancv2` | API Management | API gateway |
 | AI Foundry | (Project-based) | AI Service | GPT-4o-mini endpoint |
 
 ### Environment Configuration

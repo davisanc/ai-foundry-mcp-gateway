@@ -207,32 +207,57 @@ jobs:
     - name: Create APIM
       run: |
         # Check if APIM exists
-        APIM_EXISTS=$(az apim show -g $AZURE_RESOURCE_GROUP -n $APIM_NAME --query "id" -o tsv 2>/dev/null)
+        APIM_EXISTS=$(az apim show -g $AZURE_RESOURCE_GROUP -n $APIM_NAME --query "id" -o tsv 2>/dev/null || echo "")
         
         if [ -z "$APIM_EXISTS" ]; then
-          # Check if soft-deleted instance exists
+          # Check if soft-deleted instance exists (Azure soft-delete is 48 hours)
           echo "Checking for soft-deleted APIM instance..."
           SOFT_DELETED=$(az rest --method get \
-            --uri "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.ApiManagement/deletedservices/$APIM_NAME?api-version=2021-08-01" \
-            --query "name" -o tsv 2>/dev/null || echo "")
+            --uri "/subscriptions/$(az account show --query id -o tsv)/providers/Microsoft.ApiManagement/deletedservices/$APIM_NAME?api-version=2021-08-01" \
+            2>/dev/null | jq -r '.name // empty' || echo "")
           
           if [ -n "$SOFT_DELETED" ]; then
-            echo "Found soft-deleted APIM instance, purging..."
+            echo "Found soft-deleted APIM instance: $SOFT_DELETED"
+            echo "Attempting to purge..."
             az rest --method delete \
-              --uri "/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$AZURE_RESOURCE_GROUP/providers/Microsoft.ApiManagement/deletedservices/$APIM_NAME?api-version=2021-08-01"
-            echo "⏳ Waiting 30 seconds for purge to complete..."
-            sleep 30
+              --uri "/subscriptions/$(az account show --query id -o tsv)/providers/Microsoft.ApiManagement/deletedservices/$APIM_NAME?api-version=2021-08-01" \
+              2>/dev/null || echo "⚠️ Purge request sent (may take time)"
+            echo "⏳ Waiting 60 seconds for purge to complete..."
+            sleep 60
+          else
+            echo "✅ No soft-deleted instance found"
           fi
           
           echo "Creating new APIM instance..."
-          az apim create \
-            --resource-group $AZURE_RESOURCE_GROUP \
-            --name $APIM_NAME \
-            --location $LOCATION \
-            --sku-name Developer \
-            --publisher-email $APIM_PUBLISHER_EMAIL \
-            --publisher-name "$APIM_PUBLISHER_NAME"
-          echo "✅ APIM created"
+          RETRY_COUNT=0
+          MAX_RETRIES=3
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if az apim create \
+              --resource-group $AZURE_RESOURCE_GROUP \
+              --name $APIM_NAME \
+              --location $LOCATION \
+              --sku-name Developer \
+              --publisher-email $APIM_PUBLISHER_EMAIL \
+              --publisher-name "$APIM_PUBLISHER_NAME" 2>&1; then
+              echo "✅ APIM created successfully"
+              break
+            else
+              RETRY_COUNT=$((RETRY_COUNT+1))
+              if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "⚠️ APIM creation failed, retrying in 30 seconds (attempt $((RETRY_COUNT+1))/$MAX_RETRIES)..."
+                sleep 30
+              fi
+            fi
+          done
+          
+          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+            echo "❌ Failed to create APIM after $MAX_RETRIES attempts"
+            echo "💡 Troubleshooting tips:"
+            echo "   1. If you recently deleted an APIM with this name, Azure keeps it for 48 hours (soft-delete)"
+            echo "   2. Use a different APIM name or wait 48 hours before retrying"
+            echo "   3. Check Azure Portal > API Management > Deleted services to manually purge"
+            exit 1
+          fi
         else
           echo "✅ APIM already exists"
         fi
